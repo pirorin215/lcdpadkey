@@ -436,7 +436,8 @@ void init() {
 	gpio_set_function(17, GPIO_FUNC_I2C);
 	gpio_pull_up(16);
 	gpio_pull_up(17);
-
+	
+	// I2CスキャンでLCD見つかるまでループ	
 	while(true) {
 		if(i2c_scan()) {
 			break;
@@ -499,7 +500,7 @@ void i2c_data_set(int click, int x, int y, int h, int v) {
 	i2c_buf.wheel_v = v;
 }
 
-// 画面方向に合わせてX,Y座標を補正して取得
+/** 画面方向に合わせてX,Y座標を補正して取得 **/
 axis_t axis_rotate() {
 	CST816S_Get_Point(); // 座標を取得
 	axis_t axis_cur;
@@ -517,6 +518,58 @@ axis_t axis_rotate() {
 	}
 	return axis_cur;
 }
+
+/** 押しはじめ判定 **/
+bool isRangePress(axis_t axis_cur, int dir, int len) {
+	bool bInRange = false;
+	switch(dir) {
+		case DIR_TOP:
+			bInRange = axis_cur.y <= len;
+			break;
+		case DIR_BOTTOM:
+			bInRange = axis_cur.y >= SCREEN_HEIGHT - len;
+			break;
+		case DIR_LEFT:
+			bInRange = axis_cur.x <= len;
+			break;
+		case DIR_RIGHT:
+			bInRange = axis_cur.x >= SCREEN_WIDTH - len;
+			break;
+	}
+	if(bInRange) {
+		printf("range press dir=%d len=%d\r\n", dir, len);
+		return true;
+	}
+	return false;
+}
+
+/** 押し続け判定 **/
+bool isKeepPress(int release_cnt, axis_t axis_touch, axis_t axis_cur, int dir, int len) {
+
+	if(release_cnt > 20 && abs_value(axis_touch.x, axis_cur.x) < 5 && abs_value(axis_touch.y, axis_cur.y) < 5) {
+		bool bInRange = false;
+		switch(dir) {
+			case DIR_TOP:
+				bInRange = axis_cur.y <= len;
+				break;
+			case DIR_BOTTOM:
+				bInRange = axis_cur.y >= SCREEN_HEIGHT - len;
+				break;
+			case DIR_LEFT:
+				bInRange = axis_cur.x <= len;
+				break;
+			case DIR_RIGHT:
+				bInRange = axis_cur.x >= SCREEN_WIDTH - len;
+				break;
+		}
+		if(bInRange) {
+			printf("keep press dir=%d len=%d\r\n", dir, len);
+			return true;
+		}
+	}
+	return false;
+}
+
 
 /** 座標の以前からの移動量の計算 **/
 axis_t get_axis_delta(axis_t axis_cur, axis_t axis_old, double z) {
@@ -623,6 +676,7 @@ void lcd_sg_draw(int sg_no) {
 	lcd_str(SG_FRAME_NEXT[0]+padding, SG_FRAME_NEXT[1]+padding, "NEXT", &Font20, WHITE, BLACK);
 }
 
+/** 設定画面の操作入力 **/
 bool sg_operation(int *sg_no, axis_t axis_cur) {
 
 	int max = 0;
@@ -673,10 +727,14 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 	return false; // 操作なし
 }
 
-bool sg_no_change(int *sg_no, axis_t axis_cur) {
-	bool b_op = false;
+/** 起動画面 **/
+void init_display() {
+	lcd_clr(BLACK);		// 画面クリア
+	//lcd_sg_draw(sg_no);
 
-	return b_op;
+	lcd_clr(BLACK);		// 画面クリア
+	
+	lcd_display(b0);
 }
 
 /** 設定画面処理ループ **/
@@ -734,57 +792,6 @@ void sg_display_loop() {
 	save_sg_to_flash();	// 設定保存
 }
 			
-// 押しはじめ判定
-bool isRangePress(axis_t axis_cur, int dir, int len) {
-	bool bInRange = false;
-	switch(dir) {
-		case DIR_TOP:
-			bInRange = axis_cur.y <= len;
-			break;
-		case DIR_BOTTOM:
-			bInRange = axis_cur.y >= SCREEN_HEIGHT - len;
-			break;
-		case DIR_LEFT:
-			bInRange = axis_cur.x <= len;
-			break;
-		case DIR_RIGHT:
-			bInRange = axis_cur.x >= SCREEN_WIDTH - len;
-			break;
-	}
-	if(bInRange) {
-		printf("range press dir=%d len=%d\r\n", dir, len);
-		return true;
-	}
-	return false;
-}
-
-// 押し続け判定
-bool isKeepPress(int release_cnt, axis_t axis_touch, axis_t axis_cur, int dir, int len) {
-
-	if(release_cnt > 20 && abs_value(axis_touch.x, axis_cur.x) < 5 && abs_value(axis_touch.y, axis_cur.y) < 5) {
-		bool bInRange = false;
-		switch(dir) {
-			case DIR_TOP:
-				bInRange = axis_cur.y <= len;
-				break;
-			case DIR_BOTTOM:
-				bInRange = axis_cur.y >= SCREEN_HEIGHT - len;
-				break;
-			case DIR_LEFT:
-				bInRange = axis_cur.x <= len;
-				break;
-			case DIR_RIGHT:
-				bInRange = axis_cur.x >= SCREEN_WIDTH - len;
-				break;
-		}
-		if(bInRange) {
-			printf("keep press dir=%d len=%d\r\n", dir, len);
-			return true;
-		}
-	}
-	return false;
-}
-
 /** メイン処理ループ **/
 void mouse_display_loop() {
 	axis_t axis_cur;				// 現在座標
@@ -1006,7 +1013,9 @@ void mouse_display_loop() {
 }
 
 int main(void) {
-	init();				// 初期化処理
+	init();			// 初期化処理
+
+	init_display();		// 起動画面
 
 	load_sg_from_flash();	// フラッシュから設定読み取り
 
