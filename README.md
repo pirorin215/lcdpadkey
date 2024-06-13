@@ -1,5 +1,5 @@
-# lcdpadkey
-RP2040-Touch-LCD-1.28 trackpad
+# rp2040-lcd-1.28-trackpad
+### rp2040-lcd-1.28-trackpad for trackpad
 
 ## How to build
 
@@ -8,8 +8,8 @@ RP2040-Touch-LCD-1.28 trackpad
 1. Download program source
 
 ```
-git clone https://github.com/pirorin215/lcdpadkey
-cd lcdpadkey
+git clone https://github.com/pirorin215/rp2040-lcd-1.28-trackpad
+cd rp2040-lcd-1.28-trackpad
 ```
 
 2. pico-sdk PATH
@@ -51,3 +51,7 @@ cmake ../CMakeLists.txt
 
 4. make
 ```
+make
+```
+
+5. Write uf2 to raspberry pi pico
