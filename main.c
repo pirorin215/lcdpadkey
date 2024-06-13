@@ -222,7 +222,7 @@ const uint16_t COLOR_SCROLL_X = GREEN;
 #define SG_ITEM_WIDTH  115
 
 // 設定画面の設定値のフレーム
-int SG_FRAME_VALUE[4] = {88, 137, 88 + 90,  137 + 25};
+int SG_FRAME_VALUE[4] = {88, 137, 88 + 100,  137 + 25};
 
 // 設定画面のボタンのフレーム
 int SG_FRAME_DOWN[4] =  {  0,  30,   0 + SG_ITEM_WIDTH,  30 + SG_ITEM_HEIGHT};
@@ -241,7 +241,7 @@ typedef enum {
 	SG_SCROLL_X_DIR,
 	SG_SCROLL_X_LEN,
 	SG_TITLE_SPEED,
-	SG_END,
+	SG_EXIT,
 	SG_NUM,
 } SG_ITEM;
 
@@ -606,7 +606,7 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_DIR:	sprintf(tmps, "%02d:SCROLL X DIR", sg_no); break;
 		case SG_SCROLL_X_LEN:	sprintf(tmps, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_TITLE_SPEED:	sprintf(tmps, "%02d:TITLE SPEED", sg_no); break;
-		case SG_END:		sprintf(tmps, ""); break;
+		case SG_EXIT:		sprintf(tmps, "     EXIT"); break;
 	}
 	return tmps;
 }                                  
@@ -626,7 +626,12 @@ bool is_frame_touch(int frame[], axis_t axis_cur) {
 
 /** 設定画面描画 **/
 void lcd_sg_draw(int sg_no) {
-	lcd_clr(BLACK);
+
+	if(sg_no != SG_EXIT) {
+		lcd_clr(0x2222);
+	} else {
+		lcd_clr(BLACK);
+	}
 
 	// 設定項目名の表示
 	lcd_str(SG_ITEMNAME_X, SG_ITEMNAME_Y, get_sg_itemname(sg_no), &Font20, CYAN, BLACK);
@@ -650,7 +655,7 @@ void lcd_sg_draw(int sg_no) {
 			// 方向系の設定は文字に変換
 			switch(g_sg_data[sg_no]) {
 				case DIR_TOP:		strcat(tmps, "TOP"); break;
-				case DIR_BOTTOM:	strcat(tmps, "BOTOM"); break;
+				case DIR_BOTTOM:	strcat(tmps, "BOTTOM"); break;
 				case DIR_LEFT:		strcat(tmps, "LEFT"); break;
 				case DIR_RIGHT:		strcat(tmps, "RIGHT"); break;
 			}
@@ -660,7 +665,7 @@ void lcd_sg_draw(int sg_no) {
 			break;
 	}
 
-	if(sg_no != SG_END) {
+	if(sg_no != SG_EXIT) {
 		// 設定値の枠
 		lcd_frame_set(SG_FRAME_VALUE, RED, 1);
 		// 設定値
@@ -672,7 +677,7 @@ void lcd_sg_draw(int sg_no) {
 	lcd_frame_set(SG_FRAME_DOWN, GRAY, 3);
 	lcd_frame_set(SG_FRAME_UP  , GRAY, 3);
 
-	if(sg_no != SG_END) {
+	if(sg_no != SG_EXIT) {
 		lcd_str(SG_FRAME_DOWN[0]+padding, SG_FRAME_DOWN[1]+padding, "DOWN", &Font20, WHITE, BLACK);
 		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, " UP", &Font20, WHITE, BLACK);
 	} else {
@@ -712,7 +717,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 	}
 
 	if(is_frame_touch(SG_FRAME_DOWN, axis_cur)) {
-		if(*sg_no != SG_END) {
+		if(*sg_no != SG_EXIT) {
 			printf("SG_FRAME_DOWN\n");
 			if(g_sg_data[*sg_no] > 0) {
 				g_sg_data[*sg_no] --;
@@ -724,7 +729,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		}
 		return true;
 	} else if(is_frame_touch(SG_FRAME_UP, axis_cur)) {
-		if(*sg_no != SG_END) {
+		if(*sg_no != SG_EXIT) {
 			printf("SG_FRAME_UP\n");
 			if(g_sg_data[*sg_no] < max) {
 				g_sg_data[*sg_no] ++;
@@ -738,18 +743,18 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 	} else if(is_frame_touch(SG_FRAME_NEXT, axis_cur)) {
 		printf("SG_FRAME_NEXT\n");
 		if(*sg_no < SG_NUM - 1) {
-			*sg_no = *sg_no + 1;
+			*sg_no = *sg_no + 1;	// 次の項目へ
 		} else {
-			*sg_no = 0;
+			*sg_no = 0;		// 最後から最初に戻る
 		}
 		return true;
 	}
 	if(is_frame_touch(SG_FRAME_PREV, axis_cur)) {
 		printf("SG_FRAME_PREV\n");
 		if(*sg_no > 0) {
-			*sg_no = *sg_no - 1;
+			*sg_no = *sg_no - 1;	// 前の項目へ
 		} else {
-			*sg_no = SG_NUM - 1;
+			*sg_no = SG_NUM - 1;	// 最初から最後に行く
 		}
 		return true;
 	}
@@ -827,7 +832,13 @@ void sg_display_loop() {
 		if(touch_mode == MODE_TOUCHING) {
 			b_op = sg_operation(&sg_no, axis_cur);
 			if(sg_no == SG_NUM) {
-				break;		// ループ終了
+				// ループ終了
+				break;
+			}
+			if(sg_no == SG_EXIT) {
+				// EXITなら一旦連続押しをやめる
+				renzoku_time = time_us_32() + RENZOKU_TOUCH_MSEC_LIMIT;
+				touch_mode == MODE_NONE;
 			}
 		}
 		if(b_op) {
