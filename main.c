@@ -850,7 +850,9 @@ void sg_display_loop() {
 		}
 		lcd_display(b0);
 	}
-	start_display();	// 画面クリア
+
+	screensaver=g_sg_data[SG_SLEEP] * 50;	// スクリーンセーバー初期化
+	start_display();			// 画面クリア
 }
 			
 /** メイン処理ループ **/
