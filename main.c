@@ -225,10 +225,10 @@ const uint16_t COLOR_SCROLL_X = GREEN;
 int SG_FRAME_VALUE[4] = {88, 137, 88 + 100,  137 + 25};
 
 // 設定画面のボタンのフレーム
-int SG_FRAME_DOWN[4] =  {  0,  30,   0 + SG_ITEM_WIDTH,  30 + SG_ITEM_HEIGHT};
-int SG_FRAME_UP  [4] =  {125,  30, 125 + SG_ITEM_WIDTH,  30 + SG_ITEM_HEIGHT};
-int SG_FRAME_PREV[4] =  {  0, 180,   0 + SG_ITEM_WIDTH, 180 + SG_ITEM_HEIGHT};
-int SG_FRAME_NEXT[4] =  {125, 180, 125 + SG_ITEM_WIDTH, 180 + SG_ITEM_HEIGHT};
+int SG_FRAME_DOWN[4] =  { 30,  30,   0 + SG_ITEM_WIDTH     ,  30 + SG_ITEM_HEIGHT};
+int SG_FRAME_UP  [4] =  {125,  30, 125 + SG_ITEM_WIDTH - 30,  30 + SG_ITEM_HEIGHT};
+int SG_FRAME_PREV[4] =  { 30, 180,   0 + SG_ITEM_WIDTH     , 180 + SG_ITEM_HEIGHT};
+int SG_FRAME_NEXT[4] =  {125, 180, 125 + SG_ITEM_WIDTH - 30, 180 + SG_ITEM_HEIGHT};
 
 typedef enum {
 	SG_SLEEP,
@@ -590,6 +590,11 @@ void lcd_frame_set(int frame[], int16_t lcd_color, uint8_t ps) {
 	lcd_frame(frame[0], frame[1], frame[2], frame[3], lcd_color, ps);
 }
 
+void lcd_button_frame_set(int frame[], int16_t color1, uint8_t ps1, int16_t color2, uint8_t ps2) {
+	lcd_frame(frame[0]      , frame[1]      , frame[2],       frame[3],       color1, ps1);
+	lcd_frame(frame[0] + ps1, frame[1] + ps1, frame[2] - ps1, frame[3] - ps1, color2, ps2);
+}
+
 char *get_sg_itemname(int sg_no) {
 
 	char *tmps = NULL;
@@ -627,11 +632,7 @@ bool is_frame_touch(int frame[], axis_t axis_cur) {
 /** 設定画面描画 **/
 void lcd_sg_draw(int sg_no) {
 
-	if(sg_no != SG_EXIT) {
-		lcd_clr(0x2222);
-	} else {
-		lcd_clr(BLACK);
-	}
+	lcd_clr(0x2222);
 
 	// 設定項目名の表示
 	lcd_str(SG_ITEMNAME_X, SG_ITEMNAME_Y, get_sg_itemname(sg_no), &Font20, CYAN, BLACK);
@@ -672,23 +673,26 @@ void lcd_sg_draw(int sg_no) {
 		lcd_str(SG_VALUE_X, SG_VALUE_Y, tmps, &Font20, WHITE, BLACK);
 	}
 
-	// 設定変更する４つのボタンの表示
-	int padding=20;	
-	lcd_frame_set(SG_FRAME_DOWN, GRAY, 3);
-	lcd_frame_set(SG_FRAME_UP  , GRAY, 3);
+	// 設定ボタンの表示
+	int px=8;
+	int py=8;
+	lcd_button_frame_set(SG_FRAME_DOWN, BLACK, 5, GRAY,  30);
+	lcd_button_frame_set(SG_FRAME_UP  , BLACK, 5, GRAY,  30);
 
 	if(sg_no != SG_EXIT) {
-		lcd_str(SG_FRAME_DOWN[0]+padding, SG_FRAME_DOWN[1]+padding, "DOWN", &Font20, WHITE, BLACK);
-		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, " UP", &Font20, WHITE, BLACK);
+		lcd_str(SG_FRAME_DOWN[0] + px +  5, SG_FRAME_DOWN[1] + py, "DOWN",   &Font20, BLACK, WHITE);
+		lcd_str(SG_FRAME_UP[0]   + px + 15, SG_FRAME_UP[1]   + py, "UP",     &Font20, BLACK, WHITE);
 	} else {
-		lcd_str(SG_FRAME_DOWN[0]+padding, SG_FRAME_DOWN[1]+padding, "CANCEL", &Font20, WHITE, BLACK);
-		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, "SAVE", &Font24, RED, BLACK);
+		lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "CANCEL", &Font16, BLACK, WHITE);
+		lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "SAVE",   &Font24, RED,   WHITE);
 	}
 
-	lcd_frame_set(SG_FRAME_PREV, GRAY, 3);
-	lcd_frame_set(SG_FRAME_NEXT, GRAY, 3);
-	lcd_str(SG_FRAME_PREV[0]+padding, SG_FRAME_PREV[1]+padding, "  PREV", &Font20, WHITE, BLACK);
-	lcd_str(SG_FRAME_NEXT[0]+padding, SG_FRAME_NEXT[1]+padding, "NEXT", &Font20, WHITE, BLACK);
+	lcd_button_frame_set(SG_FRAME_PREV, BLACK, 5, GRAY, 30);
+	lcd_button_frame_set(SG_FRAME_NEXT, BLACK, 5, GRAY, 30);
+	{
+		lcd_str(SG_FRAME_PREV[0] + px +  5, SG_FRAME_PREV[1] + py, "PREV",   &Font20, BLACK, WHITE);
+		lcd_str(SG_FRAME_NEXT[0] + px +  5, SG_FRAME_NEXT[1] + py, "NEXT",   &Font20, BLACK, WHITE);
+	}
 }
 
 /** 設定画面の操作入力 **/
