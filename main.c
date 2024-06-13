@@ -682,7 +682,7 @@ void lcd_sg_draw(int sg_no) {
 		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, " UP", &Font20, WHITE, BLACK);
 	} else {
 		lcd_str(SG_FRAME_DOWN[0]+padding, SG_FRAME_DOWN[1]+padding, "CANCEL", &Font20, WHITE, BLACK);
-		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, " SAVE", &Font20, WHITE, BLACK);
+		lcd_str(SG_FRAME_UP[0]+padding, SG_FRAME_UP[1]+padding, "SAVE", &Font24, RED, BLACK);
 	}
 
 	lcd_frame_set(SG_FRAME_PREV, GRAY, 3);
