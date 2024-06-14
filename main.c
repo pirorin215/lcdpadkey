@@ -26,7 +26,7 @@ static __attribute__((section (".noinit")))char losabuf[4096];
 #include <pico/util/datetime.h>
 #include <pico/bootrom/sf_table.h>
 
-//#define GYRO_6AXIS            // ジャイロセンサ利用フラグ
+#define GYRO_6AXIS            // ジャイロセンサ利用フラグ
 
 #ifdef GYRO_6AXIS
 #include <QMI8658.h>            // ジャイロセンサライブラリ
@@ -180,6 +180,7 @@ typedef enum {
   MODE_RELEASE,
   MODE_L_CLICK,
   MODE_R_CLICK,
+  MODE_GYRO,
 } TOUCH_MODE;
 
 #define SCREEN_WIDTH 240
@@ -230,6 +231,8 @@ int SG_FRAME_UP  [4] =  {125,  30, 125 + SG_ITEM_WIDTH - 30,  30 + SG_ITEM_HEIGH
 int SG_FRAME_PREV[4] =  { 30, 180,   0 + SG_ITEM_WIDTH     , 180 + SG_ITEM_HEIGHT};
 int SG_FRAME_NEXT[4] =  {125, 180, 125 + SG_ITEM_WIDTH - 30, 180 + SG_ITEM_HEIGHT};
 
+int SG_FRAME_RESET[4] =  { 40, 120,  60 + SG_ITEM_WIDTH + 20, 120 + SG_ITEM_HEIGHT - 10};
+
 typedef enum {
 	SG_SLEEP,
 	SG_DRUG_DIR,
@@ -241,6 +244,7 @@ typedef enum {
 	SG_SCROLL_X_DIR,
 	SG_SCROLL_X_LEN,
 	SG_TITLE_SPEED,
+	SG_GYRO,
 	SG_EXIT,
 	SG_NUM,
 } SG_ITEM;
@@ -276,6 +280,31 @@ void load_sg_from_flash(void) {
 	for(int i=0; i < SG_NUM; i++ ) {
 		g_sg_data[i] = flash_target_contents[i];
 		printf("SG %2d = %d\r\n", i, g_sg_data[i]);
+	}
+}
+
+#define CHECK_NUMBER_SG 123
+
+/** フラッシュデータの初期化 **/
+void init_sg(void) {
+	g_sg_data[SG_SLEEP]		= 4;
+	g_sg_data[SG_TITLE_SPEED]	= 4;
+	g_sg_data[SG_DRUG_DIR]		= DIR_TOP;
+	g_sg_data[SG_DRUG_LEN]		= 55;
+	g_sg_data[SG_R_CLICK_DIR]	= DIR_LEFT;
+	g_sg_data[SG_R_CLICK_LEN]	= 55;
+	g_sg_data[SG_SCROLL_Y_DIR]	= DIR_RIGHT;
+	g_sg_data[SG_SCROLL_Y_LEN]	= 55;
+	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
+	g_sg_data[SG_SCROLL_X_LEN]	= 55;
+	g_sg_data[SG_GYRO]		= 0;
+	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
+}
+
+/** フラッシュデータチェック **/
+void check_sg(void) {
+	if(g_sg_data[SG_EXIT] != CHECK_NUMBER_SG) {
+		init_sg();
 	}
 }
 
@@ -479,7 +508,8 @@ void init() {
 	CST816S_init(CST816S_Point_Mode);
 
 #ifdef GYRO_6AXIS
-	QMI8658_init();
+    	QMI8658_enableWakeOnMotion();
+	QMI8658_init();sleep_ms(2500);printf("init done\n");
 #endif
 }
 
@@ -500,6 +530,31 @@ void i2c_data_set(int click, int x, int y, int h, int v) {
 	i2c_buf.wheel_h = h;
 	i2c_buf.wheel_v = v;
 }
+
+/** ジャイロセンサ用 **/
+float acc[3], gyro[3];
+unsigned int tim_count = 0;
+int16_t get_acc02f(float f0, float f1, float FACT){
+  switch(plosa->scandir){
+    case 0: return (int16_t)(f0/FACT);break;
+    case 1: return (int16_t)(f1/FACT);break;
+    case 2: return (int16_t)(f0/-FACT);break;
+    case 3: return (int16_t)(f1/-FACT);break;
+  }
+}
+int16_t get_acc12f(float f0, float f1, float FACT){
+  switch(plosa->scandir){
+    case 0: return (int16_t)(f1/FACT);break;
+    case 1: return (int16_t)(f0/-FACT);break;
+    case 2: return (int16_t)(f1/-FACT);break;
+    case 3: return (int16_t)(f0/FACT);break;
+  }
+}
+int16_t get_acc02(float f0, float f1){return get_acc02f(f0,f1,25.0f);}
+int16_t get_acc12(float f0, float f1){return get_acc12f(f0,f1,25.0f);}
+int16_t get_acc0(){return get_acc02(acc[0]*1.5f,acc[1]*1.5f);}
+int16_t get_acc1(){return get_acc12(acc[0]*1.5f,acc[1]*1.5f);}
+/************************************/
 
 /** 画面方向に合わせてX,Y座標を補正して取得 **/
 axis_t axis_rotate() {
@@ -611,7 +666,8 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_DIR:	sprintf(tmps, "%02d:SCROLL X DIR", sg_no); break;
 		case SG_SCROLL_X_LEN:	sprintf(tmps, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_TITLE_SPEED:	sprintf(tmps, "%02d:TITLE SPEED", sg_no); break;
-		case SG_EXIT:		sprintf(tmps, "     EXIT"); break;
+		case SG_GYRO:		sprintf(tmps, "%02d:GYRO SPEED", sg_no); break;
+		case SG_EXIT:		sprintf(tmps, "      EXIT"); break;
 	}
 	return tmps;
 }                                  
@@ -643,6 +699,7 @@ void lcd_sg_draw(int sg_no) {
 	switch(sg_no) {
 		case SG_SLEEP:
 		case SG_TITLE_SPEED:
+		case SG_GYRO:
 			if(g_sg_data[sg_no] == 0) {
 				strcat(tmps, "OFF");
 			} else {
@@ -684,7 +741,10 @@ void lcd_sg_draw(int sg_no) {
 		lcd_str(SG_FRAME_UP[0]   + px + 15, SG_FRAME_UP[1]   + py, "UP",     &Font20, BLACK, WHITE);
 	} else {
 		lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "CANCEL", &Font16, BLACK, WHITE);
-		lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "SAVE",   &Font24, RED,   WHITE);
+		lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "SAVE",   &Font24, BLUE,   WHITE);
+
+		lcd_button_frame_set(SG_FRAME_RESET, BLACK, 5, GRAY,  30);
+		lcd_str(SG_FRAME_RESET[0]+ px +  0, SG_FRAME_RESET[1]+ py, "ALL RESET", &Font20, RED,   WHITE);
 	}
 
 	lcd_button_frame_set(SG_FRAME_PREV, BLACK, 5, GRAY, 30);
@@ -717,6 +777,9 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			break;
 		case SG_TITLE_SPEED:
 			max=8;
+			break;
+		case SG_GYRO:
+			max=3;
 			break;
 	}
 
@@ -759,6 +822,14 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			*sg_no = *sg_no - 1;	// 前の項目へ
 		} else {
 			*sg_no = SG_NUM - 1;	// 最初から最後に行く
+		}
+		return true;
+	}
+	if(is_frame_touch(SG_FRAME_RESET, axis_cur)) {
+		printf("SG_FRAME_RESET\n");
+		if(*sg_no == SG_EXIT) {
+			init_sg();		// 設定初期化
+			*sg_no = SG_NUM;
 		}
 		return true;
 	}
@@ -854,6 +925,16 @@ void sg_display_loop() {
 	screensaver=g_sg_data[SG_SLEEP] * 50;	// スクリーンセーバー初期化
 	start_display();			// 画面クリア
 }
+
+/** スクリーンセーバー解除 **/
+void screenSaverOff() {
+	screensaver=g_sg_data[SG_SLEEP] * 50;
+	if(plosa->is_sleeping){
+	      lcd_set_brightness(plosa->BRIGHTNESS);
+	      lcd_sleepoff();
+	}
+	plosa->is_sleeping=false;
+}
 			
 /** メイン処理ループ **/
 void mouse_display_loop() {
@@ -871,6 +952,10 @@ void mouse_display_loop() {
 
 	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
+	
+
+	// ジャイロ用
+	axis_t axis_gyro_old;				// 以前の傾き
 
 	printf("loop start !!\r\n");
 	
@@ -885,13 +970,8 @@ void mouse_display_loop() {
 		// タッチが行われた場合
 		if(flag_touch){
 			release_cnt++;
-		
-			screensaver=g_sg_data[SG_SLEEP] * 50;
-			if(plosa->is_sleeping){
-			      lcd_set_brightness(plosa->BRIGHTNESS);
-			      lcd_sleepoff();
-			}
-			plosa->is_sleeping=false;
+	
+			screenSaverOff();	
 
 			axis_cur = axis_rotate(); // 画面方向に合わせてX,Y座標を補正して取得
 		
@@ -999,7 +1079,7 @@ void mouse_display_loop() {
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					lcd_text_set(2, lcd_color, "SCROLL Y dx:%d dy:%d", axis_delta.x, axis_delta.y);
+					lcd_text_set(3, lcd_color, "SCROLL Y dx:%d dy:%d", axis_delta.x, axis_delta.y);
 					i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -axis_delta.y);
 					last_touch_time = time_us_32();	// 最後に触った時刻
 
@@ -1011,7 +1091,7 @@ void mouse_display_loop() {
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					lcd_text_set(2, lcd_color, "SCROLL X dx:%d dy:%d", axis_delta.x, axis_delta.y);
+					lcd_text_set(3, lcd_color, "SCROLL X dx:%d dy:%d", axis_delta.x, axis_delta.y);
 					i2c_data_set(NOCHANGE_CLICK, 0, 0, axis_delta.x, 0);
 					last_touch_time = time_us_32();	// 最後に触った時刻
 					axis_old = axis_cur;
@@ -1020,7 +1100,7 @@ void mouse_display_loop() {
 				}
 				break;	
 			case MODE_DRAG:
-				lcd_text_set(2, lcd_color, "DRAG");
+				lcd_text_set(3, lcd_color, "DRAG");
 
 				lcd_color = COLOR_DRAG;
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
@@ -1031,7 +1111,7 @@ void mouse_display_loop() {
 
 				break;	
 			case MODE_R_CLICK:
-				lcd_text_set(2, lcd_color, "R CLICK");
+				lcd_text_set(3, lcd_color, "R CLICK");
 				lcd_color = BLACK;
 				
 				i2c_data_set(R_CLICK, 0, 0, 0, 0);
@@ -1043,7 +1123,7 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_RELEASE:
-				lcd_text_set(2, lcd_color, "TOUCH RELEASE");
+				lcd_text_set(3, lcd_color, "TOUCH RELEASE");
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
@@ -1053,7 +1133,7 @@ void mouse_display_loop() {
 				
 				if(axis_delta.x < 20 && axis_delta.y < 20 && release_cnt < CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
 					// 左クリック
-					lcd_text_set(2, lcd_color, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
+					lcd_text_set(3, lcd_color, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
 					lcd_color = BLACK;	
 				
 					i2c_data_set(L_CLICK, 0, 0, 0, 0);
@@ -1070,6 +1150,25 @@ void mouse_display_loop() {
 				break;	
 		}
 
+		// ジャイロ操作取得
+		QMI8658_read_xyz(acc, gyro, &tim_count);		
+		int8_t gyroY = (int8_t)get_acc0();
+		int8_t gyroX = (int8_t)get_acc1();
+
+		if(g_sg_data[SG_GYRO] > 0) {
+			if(abs(gyroX) > 2 || abs(gyroY) > 2) {
+				i2c_data_set(NOCHANGE_CLICK, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
+			}
+		}
+		if(abs(abs(axis_gyro_old.x) - abs(gyroX)) > 0 || abs(abs(axis_gyro_old.y) - abs(gyroY)) > 0 ) {
+			screenSaverOff();
+			lcd_text_set(2, lcd_color, "GX=%d GY=%d", gyroX, gyroY);
+			axis_gyro_old.x = gyroX;
+			axis_gyro_old.y = gyroY;
+		}
+		
+		///////////////////////////////////////
+
 		lcd_text_draw(lcd_color);
 		lcd_display(b0);
 	}
@@ -1079,6 +1178,8 @@ int main(void) {
 	init();			// 初期化処理
 	
 	load_sg_from_flash();	// フラッシュから設定読み取り
+
+	check_sg();		// フラッシュデータチェック	
 
 	start_display();	// 起動画面
 
