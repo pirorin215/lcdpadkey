@@ -1182,7 +1182,8 @@ void mouse_display_loop() {
 		} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
 			// ジャイロでスクロール
 			if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, gyroX*g_sg_data[SG_GYRO]/5, gyroY*g_sg_data[SG_GYRO]/5);
+				printf("gyro scroll\n");
+				i2c_data_set(NOCHANGE_CLICK, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
 			}
 		}
 
