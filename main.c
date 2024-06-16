@@ -854,6 +854,16 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 	return false; // 操作なし
 }
 
+/** スクリーンセーバー解除 **/
+void screenSaverOff() {
+	screensaver=g_sg_data[SG_SLEEP] * 50;
+	if(plosa->is_sleeping){
+	      lcd_set_brightness(plosa->BRIGHTNESS);
+	      lcd_sleepoff();
+	}
+	plosa->is_sleeping=false;
+}
+
 /** 起動画面 **/
 void start_display() {
 	printf("init display start \r\n");
@@ -940,18 +950,9 @@ void sg_display_loop() {
 		lcd_display(b0);
 	}
 
-	screensaver=g_sg_data[SG_SLEEP] * 50;	// スクリーンセーバー初期化
-	start_display();			// 画面クリア
-}
+	screenSaverOff();
 
-/** スクリーンセーバー解除 **/
-void screenSaverOff() {
-	screensaver=g_sg_data[SG_SLEEP] * 50;
-	if(plosa->is_sleeping){
-	      lcd_set_brightness(plosa->BRIGHTNESS);
-	      lcd_sleepoff();
-	}
-	plosa->is_sleeping=false;
+	start_display();			// 画面クリア
 }
 
 /** メイン処理ループ **/
