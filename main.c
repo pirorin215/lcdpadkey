@@ -1119,7 +1119,7 @@ void mouse_display_loop() {
 					if(abs(axis_delta.y) >= 1) {
 						lcd_text_set(3, lcd_bg_color, true, "SCROLL Y dx:%d dy:%d", axis_delta.x, axis_delta.y);
 
-						if(sc_count % 3 == 2) {
+						if(sc_count % 3 == 0) {
 							int delta = ceil(sc_sum / 3);
 							printf("scroll y sc_sum=%d delta=%d\n", sc_sum, delta);
 							i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1 * delta);
@@ -1132,9 +1132,9 @@ void mouse_display_loop() {
 						}
 						sc_count++;
 					} else {
-						if(sc_count > 8) {
-							int delta = ceil(sc_last_sum / 3);
-							printf("scroll y sc_last_sum=%d delta=%d\n", sc_sum, delta);
+						if(sc_count > 12) {
+							int delta = sc_last_sum > 0 ? 1 : -1;
+							printf("scroll y sc_last_sum=%d delta=%d\n", sc_last_sum, delta);
 							i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1 * delta);
 						}
 					}
@@ -1154,7 +1154,7 @@ void mouse_display_loop() {
 					if(abs(axis_delta.x) >= 1) {
 						lcd_text_set(3, lcd_bg_color, true, "SCROLL X dx:%d dy:%d sc_count=%d", axis_delta.x, axis_delta.y, sc_count);
 
-						if(sc_count % 3 == 2) {
+						if(sc_count % 3 == 0) {
 							int delta = ceil(sc_sum / 3);
 							printf("scroll x sc_sum=%d delta=%d\n", sc_sum, delta);
 							i2c_data_set(NOCHANGE_CLICK, 0, 0, axis_delta.x, 0);
