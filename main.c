@@ -247,6 +247,8 @@ typedef enum {
 	SG_TITLE_SPEED,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
+	SG_VIBRATION,
+	SG_GAME,
 	SG_EXIT,
 	SG_NUM,
 } SG_ITEM;
@@ -301,6 +303,8 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
+	g_sg_data[SG_VIBRATION]		= 1;
+	g_sg_data[SG_GAME]		= 0;
 	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
 }
 
@@ -436,6 +440,78 @@ int abs_value(int a, int b) {
 	return abs(abs(a) - abs(b));
 }
 
+/** lcd_circle の範囲ガード **/
+void lcd_circle_guard(uint16_t x, uint16_t y, uint16_t radius, uint16_t color, uint16_t ps, bool fill) {
+
+	x = x < 0 + radius            ? radius                  : x;
+	x = x > SCREEN_WIDTH  - radius ? SCREEN_WIDTH  - radius : x;
+	
+	y = y < 0 + radius            ? radius                  : y;
+	y = y > SCREEN_HEIGHT - radius ? SCREEN_HEIGHT - radius : y;
+
+	lcd_circle(x, y, radius, color, ps, fill);
+}
+
+#define VIBRATION_PIN 18
+
+// グローバル変数
+volatile bool vibration_active = false;
+
+void vibration_on() {
+	printf("vibration_on\n");
+        gpio_put(VIBRATION_PIN, 1);
+}
+
+void vibration_off() {
+	printf("vibration_off\n");
+        gpio_put(VIBRATION_PIN, 0);
+}
+
+void set_timer(uint32_t ms, int64_t (*callback)(alarm_id_t, void*), void *user_data) {
+    add_alarm_in_ms(ms, callback, user_data, false);
+}
+
+int64_t stop_vibration_callback(alarm_id_t id, void *user_data) {
+    vibration_off();
+    vibration_active = false;
+    return 0;
+}
+
+void trigger_vibration(int timer) {
+	if (g_sg_data[SG_VIBRATION] >= 1) {
+		if (!vibration_active) {
+		    int strength = 1; // 固定
+		    vibration_on(strength);
+		    vibration_active = true;
+		    
+		    int *itmp;
+		    set_timer(timer, stop_vibration_callback, itmp);
+		}
+	}
+}
+
+/** 中心点を光らせる処理 **/
+int64_t center_point_flash_callback(alarm_id_t id, void *user_data) {
+
+	int16_t color = (rand() % 65535) + 1;
+	
+	lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 4, color, 1, true);
+
+	printf("center_point_flash_callback color=%d\r\n", color);
+
+    	return 0;
+}
+
+void center_point_flash(int count) {
+
+	printf("center_point_flash count=%d\r\n", count);
+	for(int i=0; i < count; i++ ) {
+		printf("center_point_flash i=%d\r\n", i);
+		int *itmp;
+		set_timer(50*i, center_point_flash_callback, itmp);
+	}	
+}
+
 // フラッシュメモリのCSピンを定義
 const uint FLASH_CS_PIN = 1;
 
@@ -458,6 +534,11 @@ void init() {
 
 	if(plosa->BRIGHTNESS < 10)plosa->BRIGHTNESS = 10;
 	if(plosa->BRIGHTNESS > 100)plosa->BRIGHTNESS = 100;
+
+	// バイブレーションモーター用PIN
+	gpio_init(VIBRATION_PIN);
+        gpio_set_dir(VIBRATION_PIN, GPIO_OUT);
+        gpio_put(VIBRATION_PIN, 0);
 
 	// I2C Master(LCDとの通信）
 	i2c_init(I2C_PORT, 100 * 1000);
@@ -673,23 +754,13 @@ char *get_sg_itemname(int sg_no) {
 		case SG_TITLE_SPEED:	sprintf(tmps, "%02d:TITLE SPEED", sg_no); break;
 		case SG_GYRO:		sprintf(tmps, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	sprintf(tmps, "%02d:GYRO SCROLL", sg_no); break;
+		case SG_VIBRATION:	sprintf(tmps, "%02d:VIBRATION", sg_no); break;
+		case SG_GAME:		sprintf(tmps, "%02d:GAMEMODE", sg_no); break;
 		case SG_EXIT:		sprintf(tmps, "      EXIT"); break;
 	}
 	return tmps;
 }                                  
 
-/** lcd_circle の範囲ガード **/
-void lcd_circle_guard(uint16_t x, uint16_t y, uint16_t radius, uint16_t color, uint16_t ps, bool fill) {
-
-	x = x < 0 + radius            ? radius                  : x;
-	x = x > SCREEN_WIDTH  - radius ? SCREEN_WIDTH  - radius : x;
-	
-	y = y < 0 + radius            ? radius                  : y;
-	y = y > SCREEN_HEIGHT - radius ? SCREEN_HEIGHT - radius : y;
-
-	lcd_circle(x, y, radius, color, ps, fill);
-}
-                                   
 /** 指定 座標がフレーム範囲に入って座標がフレーム範囲に入ってるかチェック **/
 bool is_frame_touch(int frame[], axis_t axis_cur) {
 	if(
@@ -719,6 +790,8 @@ void lcd_sg_draw(int sg_no) {
 		case SG_TITLE_SPEED:
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
+		case SG_VIBRATION:
+		case SG_GAME:
 			if(g_sg_data[sg_no] == 0) {
 				strcat(tmps, "OFF");
 			} else {
@@ -800,6 +873,10 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 			max=3;
+			break;
+		case SG_VIBRATION:
+		case SG_GAME:
+			max=1;
 			break;
 	}
 
@@ -957,6 +1034,48 @@ void sg_display_loop() {
 	start_display();			// 画面クリア
 }
 
+typedef struct {
+  int count;
+  int sum;
+  int last;
+}scroll_t;
+
+scroll_t scroll_function(bool bY, int16_t delta, scroll_t scrt, int16_t lcd_bg_color) {
+	if(abs(delta) >= 1) {
+		lcd_text_set(3, lcd_bg_color, true, "SCROLL delta:%d", delta);
+
+		if(scrt.count % 3 == 0) {
+			int delta = ceil(scrt.sum / 3);
+			printf("scroll sc_sum=%d delta=%d\n", scrt.sum, delta);
+			if(bY) {
+				i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, delta);
+			} else {
+				i2c_data_set(NOCHANGE_CLICK, 0, 0, delta, 0);
+			}
+			trigger_vibration(60 + abs(scrt.sum) * 3);
+			if(abs(scrt.sum) > 0) {
+				scrt.last= scrt.sum;
+			}
+			scrt.sum = 0;
+		} else {
+			scrt.sum += delta;	//TODO: 本当は同じ方向だけ足すべき？でもそんな操作人間に可能ではない気が...
+		}
+		scrt.count++;
+	} else {
+		if(scrt.count > 12) {
+			int delta = scrt.last > 0 ? 1 : -1;
+			printf("scroll scrt.sum=%d delta=%d\n", scrt.sum, delta);
+			if(bY) {
+				i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, delta);
+			} else {
+				i2c_data_set(NOCHANGE_CLICK, 0, 0, delta, 0);
+			}
+			trigger_vibration(41);
+		}
+	}
+	return scrt;
+}
+
 /** メイン処理ループ **/
 void mouse_display_loop() {
 	axis_t axis_cur;				// 現在座標
@@ -975,9 +1094,7 @@ void mouse_display_loop() {
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
 
 	// 慣性スクロール用の変数
-	int sc_count = 0;				// スクロール操作数
-	int sc_sum = 0;					// スクロール操作の合計量
-	int sc_last_sum = 0;
+	scroll_t scrt = {0};				//
 
 	// ジャイロ用
 	axis_t axis_gyro_old;				// 以前の傾き
@@ -1086,8 +1203,8 @@ void mouse_display_loop() {
 					axis_old   = axis_0;
 
 					// スクロール変数リセット
-					sc_count = 0;
-					sc_sum = 0;
+					scrt.count = 0;
+					scrt.sum = 0;
 				}
 				touch_mode = MODE_NONE;
 			}
@@ -1115,32 +1232,8 @@ void mouse_display_loop() {
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-
-					if(abs(axis_delta.y) >= 1) {
-						lcd_text_set(3, lcd_bg_color, true, "SCROLL Y dx:%d dy:%d", axis_delta.x, axis_delta.y);
-
-						if(sc_count % 3 == 0) {
-							int delta = ceil(sc_sum / 3);
-							printf("scroll y sc_sum=%d delta=%d\n", sc_sum, delta);
-							i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1 * delta);
-							if(abs(sc_sum) > 0) {
-								sc_last_sum = sc_sum;
-							}
-							sc_sum = 0;
-						} else {
-							sc_sum += axis_delta.y;	//TODO: 本当は同じ方向だけ足すべき？でもそんな操作人間に可能ではない気が...
-						}
-						sc_count++;
-					} else {
-						if(sc_count > 12) {
-							int delta = sc_last_sum > 0 ? 1 : -1;
-							printf("scroll y sc_last_sum=%d delta=%d\n", sc_last_sum, delta);
-							i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1 * delta);
-						}
-					}
-
+					scrt =  scroll_function(true, -1 * axis_delta.y,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
-
 					axis_old = axis_cur;
 				} else {
 					touch_mode = MODE_TOUCHING;
@@ -1149,23 +1242,7 @@ void mouse_display_loop() {
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-
-					
-					if(abs(axis_delta.x) >= 1) {
-						lcd_text_set(3, lcd_bg_color, true, "SCROLL X dx:%d dy:%d sc_count=%d", axis_delta.x, axis_delta.y, sc_count);
-
-						if(sc_count % 3 == 0) {
-							int delta = ceil(sc_sum / 3);
-							printf("scroll x sc_sum=%d delta=%d\n", sc_sum, delta);
-							i2c_data_set(NOCHANGE_CLICK, 0, 0, axis_delta.x, 0);
-							sc_sum = 0;
-							sc_count = 0;
-						} else {
-							sc_sum += axis_delta.x;	//TODO: 本当は同じ方向だけ足すべき？ X,Y分けるべき？
-						}
-						sc_count++;
-					}
-
+					scrt =  scroll_function(false, axis_delta.x,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
 					axis_old = axis_cur;
 				} else {
@@ -1174,6 +1251,8 @@ void mouse_display_loop() {
 				break;	
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
+				
+				trigger_vibration(150);
 
 				lcd_bg_color = COLOR_DRAG;
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
@@ -1187,8 +1266,10 @@ void mouse_display_loop() {
 				lcd_text_set(3, lcd_bg_color, true, "R CLICK");
 				lcd_bg_color = BLACK;
 				
+				trigger_vibration(120);
+				
 				i2c_data_set(R_CLICK, 0, 0, 0, 0);
-				sleep_ms(10);	
+				sleep_ms(50);	
 				i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
 	
 				touch_mode = MODE_NONE;
@@ -1251,6 +1332,10 @@ void mouse_display_loop() {
 
 			if(gyroX == 0 && gyroY ==0) {
 				// 中央の場合
+				if(g_sg_data[SG_GAME] == 1) {
+					trigger_vibration(300);
+					center_point_flash(10);
+				}
 			} else {
 				// 今のジャイロ値の場所を描画
 				lcd_circle_guard  (SCREEN_WIDTH / 2 + gyroX * 2, SCREEN_HEIGHT / 2 - gyroY * 2, 4, RED, 1, true);
