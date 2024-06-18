@@ -187,6 +187,7 @@ typedef enum {
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 240
 
+#define TRIGGER_SG_TIME         1000 // 設定画面を出す操作時間
 #define TRIGGER_SG_LEFT           30 // 設定画面を出す操作のタッチ位置 LEFT
 #define TRIGGER_SG_RIGHT         190 // 設定画面を出す操作のタッチ位置 RIGHT
 
@@ -1162,7 +1163,7 @@ void mouse_display_loop() {
 			}
 
 			// 設定画面呼び出し操作時間判定
-			bool b_sg_trigger_time = (time_us_32()-sg_trigger_time)/MS < 3000;
+			bool b_sg_trigger_time = (time_us_32()-sg_trigger_time)/MS < TRIGGER_SG_TIME;
 
 			// 設定画面の呼び出し操作状態判定
 			if(       sg_trigger_cnt == 0 && axis_cur.x < TRIGGER_SG_LEFT) {
