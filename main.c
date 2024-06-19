@@ -1138,7 +1138,6 @@ void mouse_display_loop() {
 
 	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
-	
 
 	scroll_t scrt = {0};				// スクロール変数
 
@@ -1330,9 +1329,9 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
+				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
 				delta_drag_time = (time_us_32()-start_drag_time)/MS;
-
-				if(isNearbyPoint(axis_old, axis_cur, 20) && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
+				if(axis_delta.x < 20 && axis_delta.y < 20 && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
 					// 左クリック
 					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
 					lcd_bg_color = BLACK;	
