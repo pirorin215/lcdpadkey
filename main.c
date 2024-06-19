@@ -1041,36 +1041,43 @@ typedef struct {
   int last;
 }scroll_t;
 
-scroll_t scroll_function(bool bY, int16_t delta, scroll_t scrt, int16_t lcd_bg_color) {
+void scroll_function_inner(bool bY, int move) {
+	printf("scroll bY=%d move=%d\n", bY, move);
+	if(bY) {
+		i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, move);
+	} else {
+		i2c_data_set(NOCHANGE_CLICK, 0, 0, move, 0);
+	}
+}
+
+scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_bg_color) {
+	int delta;
+	if (bY) {
+	    delta = (g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT) ? -axis_delta.y : -axis_delta.x;
+	} else {
+	    delta = (g_sg_data[SG_SCROLL_X_DIR] == DIR_TOP || g_sg_data[SG_SCROLL_X_DIR] == DIR_BOTTOM) ? axis_delta.x  : axis_delta.y;
+	}
+
 	if(abs(delta) >= 1) {
-		lcd_text_set(3, lcd_bg_color, true, "SCROLL delta:%d", delta);
+		lcd_text_set(3, lcd_bg_color, true, "SCROLL %s:%d", bY ? "Y": "X", delta);
 
 		if(scrt.count % 3 == 0) {
-			int delta = ceil(scrt.sum / 3);
-			printf("scroll sc_sum=%d delta=%d\n", scrt.sum, delta);
-			if(bY) {
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, delta);
-			} else {
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, delta, 0);
-			}
+			int move = ceil(scrt.sum / 3);
+			scroll_function_inner(bY, move);
 			trigger_vibration(60 + abs(scrt.sum) * 3);
+
 			if(abs(scrt.sum) > 0) {
 				scrt.last= scrt.sum;
 			}
 			scrt.sum = 0;
 		} else {
-			scrt.sum += delta;	//TODO: 本当は同じ方向だけ足すべき？でもそんな操作人間に可能ではない気が...
+			scrt.sum += delta;
 		}
 		scrt.count++;
 	} else {
 		if(scrt.count > 12) {
-			int delta = scrt.last > 0 ? 1 : -1;
-			printf("scroll scrt.sum=%d delta=%d\n", scrt.sum, delta);
-			if(bY) {
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, delta);
-			} else {
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, delta, 0);
-			}
+			int move = scrt.last > 0 ? 1 : -1;
+			scroll_function_inner(bY, move);
 			trigger_vibration(41);
 		}
 	}
@@ -1233,7 +1240,7 @@ void mouse_display_loop() {
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					scrt =  scroll_function(true, -1 * axis_delta.y,  scrt, lcd_bg_color); // スクロール処理
+					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
 					axis_old = axis_cur;
 				} else {
@@ -1243,7 +1250,7 @@ void mouse_display_loop() {
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					scrt =  scroll_function(false, axis_delta.x,  scrt, lcd_bg_color); // スクロール処理
+					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
 					axis_old = axis_cur;
 				} else {
