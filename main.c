@@ -741,26 +741,25 @@ void lcd_button_frame_set(int frame[], int16_t color1, uint8_t ps1, int16_t colo
 }
 
 char *get_sg_itemname(int sg_no) {
-
-	char *tmps = NULL;
-	tmps = (char*)malloc(sizeof(char) * 32);
+	static char tmps[32];
+	int sz = sizeof(tmps);
 	// 設定項目タイトル
 	switch(sg_no) {
-		case SG_SLEEP:		sprintf(tmps, "%02d:SLEEP", sg_no); break;
-		case SG_DRUG_DIR:	sprintf(tmps, "%02d:DRUG DIR", sg_no); break;
-		case SG_DRUG_LEN:	sprintf(tmps, "%02d:DRUG LEN", sg_no); break;
-		case SG_R_CLICK_DIR:	sprintf(tmps, "%02d:R CLICK DIR", sg_no); break;
-		case SG_R_CLICK_LEN:	sprintf(tmps, "%02d:R CLICK LEN", sg_no); break;
-		case SG_SCROLL_Y_DIR:	sprintf(tmps, "%02d:SCROLL Y DIR", sg_no); break;
-		case SG_SCROLL_Y_LEN:	sprintf(tmps, "%02d:SCROLL Y LEN", sg_no); break;
-		case SG_SCROLL_X_DIR:	sprintf(tmps, "%02d:SCROLL X DIR", sg_no); break;
-		case SG_SCROLL_X_LEN:	sprintf(tmps, "%02d:SCROLL X LEN", sg_no); break;
-		case SG_TITLE_SPEED:	sprintf(tmps, "%02d:TITLE SPEED", sg_no); break;
-		case SG_GYRO:		sprintf(tmps, "%02d:GYRO SPEED", sg_no); break;
-		case SG_GYRO_SCROLL:	sprintf(tmps, "%02d:GYRO SCROLL", sg_no); break;
-		case SG_VIBRATION:	sprintf(tmps, "%02d:VIBRATION", sg_no); break;
-		case SG_GAME:		sprintf(tmps, "%02d:GAMEMODE", sg_no); break;
-		case SG_EXIT:		sprintf(tmps, "      EXIT"); break;
+		case SG_SLEEP:		snprintf(tmps, sz, "%02d:SLEEP", sg_no); break;
+		case SG_DRUG_DIR:	snprintf(tmps, sz, "%02d:DRUG DIR", sg_no); break;
+		case SG_DRUG_LEN:	snprintf(tmps, sz, "%02d:DRUG LEN", sg_no); break;
+		case SG_R_CLICK_DIR:	snprintf(tmps, sz, "%02d:R CLICK DIR", sg_no); break;
+		case SG_R_CLICK_LEN:	snprintf(tmps, sz, "%02d:R CLICK LEN", sg_no); break;
+		case SG_SCROLL_Y_DIR:	snprintf(tmps, sz, "%02d:SCROLL Y DIR", sg_no); break;
+		case SG_SCROLL_Y_LEN:	snprintf(tmps, sz, "%02d:SCROLL Y LEN", sg_no); break;
+		case SG_SCROLL_X_DIR:	snprintf(tmps, sz, "%02d:SCROLL X DIR", sg_no); break;
+		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
+		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
+		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
+		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
+		case SG_VIBRATION:	snprintf(tmps, sz, "%02d:VIBRATION", sg_no); break;
+		case SG_GAME:		snprintf(tmps, sz, "%02d:GAMEMODE", sg_no); break;
+		case SG_EXIT:		snprintf(tmps, sz, "      EXIT"); break;
 	}
 	return tmps;
 }                                  
@@ -782,9 +781,14 @@ bool is_frame_touch(int frame[], axis_t axis_cur) {
 void lcd_sg_draw(int sg_no) {
 
 	lcd_clr(0x2222);
+	
+	printf("lcd_sg_draw 01 sg_no=%d\r\n", sg_no);
+	printf("lcd_sg_draw 02 sg_no=%d gsi=%s\r\n", sg_no, get_sg_itemname(sg_no));
 
 	// 設定項目名の表示
 	lcd_str(SG_ITEMNAME_X, SG_ITEMNAME_Y, get_sg_itemname(sg_no), &Font20, CYAN, BLACK);
+	
+	printf("lcd_sg_draw 03\r\n");
 
 	char tmps[32];
 	sprintf(tmps, "Value ");
@@ -818,20 +822,20 @@ void lcd_sg_draw(int sg_no) {
 			sprintf(tmps, "%s%d", tmps, g_sg_data[sg_no]);
 			break;
 	}
-
+	
 	if(sg_no != SG_EXIT) {
 		// 設定値の枠
 		lcd_frame_set(SG_FRAME_VALUE, RED, 1);
 		// 設定値
 		lcd_str(SG_VALUE_X, SG_VALUE_Y, tmps, &Font20, WHITE, BLACK);
 	}
-
+	
 	// 設定ボタンの表示
 	int px=8;
 	int py=8;
 	lcd_button_frame_set(SG_FRAME_DOWN, BLACK, 5, GRAY,  30);
 	lcd_button_frame_set(SG_FRAME_UP  , BLACK, 5, GRAY,  30);
-
+	
 	if(sg_no != SG_EXIT) {
 		lcd_str(SG_FRAME_DOWN[0] + px +  5, SG_FRAME_DOWN[1] + py, "DOWN",   &Font20, BLACK, WHITE);
 		lcd_str(SG_FRAME_UP[0]   + px + 15, SG_FRAME_UP[1]   + py, "UP",     &Font20, BLACK, WHITE);
@@ -842,7 +846,7 @@ void lcd_sg_draw(int sg_no) {
 		lcd_button_frame_set(SG_FRAME_RESET, BLACK, 5, GRAY,  30);
 		lcd_str(SG_FRAME_RESET[0]+ px +  0, SG_FRAME_RESET[1]+ py, "ALL RESET", &Font20, RED,   WHITE);
 	}
-
+	
 	lcd_button_frame_set(SG_FRAME_PREV, BLACK, 5, GRAY, 30);
 	lcd_button_frame_set(SG_FRAME_NEXT, BLACK, 5, GRAY, 30);
 	{
@@ -949,7 +953,7 @@ void screenSaverOff() {
 
 /** 起動画面 **/
 void start_display() {
-	printf("init display start \r\n");
+	printf("start display start \r\n");
 			
 	lcd_clr(BLACK);
 	lcd_title_set();
@@ -969,13 +973,14 @@ void start_display() {
 	}
 	lcd_clr(BLACK);		// 画面クリア
 	lcd_display(b0);
-	printf("init display end \r\n");
+	printf("start display end \r\n");
 }
 
 /** 設定画面処理ループ **/
 void sg_display_loop() {
-
 	start_display();
+
+	printf("sg_display_loop start\r\n");
 
 	axis_t axis_cur;				// 現在座標
 	int touch_mode = 0;				// 操作モード
@@ -1037,6 +1042,11 @@ void sg_display_loop() {
 
 	start_display();			// 画面クリア
 }
+		
+//int64_t scroll_kansei(alarm_id_t id, void *user_data) {
+//	i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1);
+//}
+//set_timer(100, scroll_kansei, itmp);
 
 void scroll_function_inner(bool bY, int move) {
 	printf("scroll bY=%d move=%d\n", bY, move);
@@ -1047,13 +1057,11 @@ void scroll_function_inner(bool bY, int move) {
 	}
 }
 
+/** スクロール処理 **/
 scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_bg_color) {
-	int delta;
-	if (bY) {
-	    delta = (g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT) ? -axis_delta.y : -axis_delta.x;
-	} else {
-	    delta = (g_sg_data[SG_SCROLL_X_DIR] == DIR_TOP || g_sg_data[SG_SCROLL_X_DIR] == DIR_BOTTOM) ? axis_delta.x  : axis_delta.y;
-	}
+	int delta = bY ? 
+	    (g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT ) ? -axis_delta.y : -axis_delta.x :
+	    (g_sg_data[SG_SCROLL_X_DIR] == DIR_TOP  || g_sg_data[SG_SCROLL_X_DIR] == DIR_BOTTOM) ?  axis_delta.x :  axis_delta.y ;
 
 	if(abs(delta) >= 1) {
 		lcd_text_set(3, lcd_bg_color, true, "SCROLL %s:%d", bY ? "Y": "X", delta);
@@ -1098,8 +1106,7 @@ void mouse_display_loop() {
 	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
 
-	// 慣性スクロール用の変数
-	scroll_t scrt = {0};				//
+	scroll_t scrt = {0};				// スクロール変数
 
 	// ジャイロ用
 	axis_t axis_gyro_old;				// 以前の傾き
