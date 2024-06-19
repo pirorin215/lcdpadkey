@@ -623,8 +623,8 @@ void init() {
 
 void i2c_data_set(int click, int x, int y, int h, int v) {
 	flag_event = 1;
-	printf("i2c_data_set click=%d x:%d y:%d h:%d v:%d\r\n", click, x, y, h, v);
 	i2c_buf.click = click == NOCHANGE_CLICK ? i2c_buf.click : click;
+	printf("i2c_data_set i2c_buf.click=%d x:%d y:%d h:%d v:%d\r\n", i2c_buf.click, x, y, h, v);
 	i2c_buf.pointer_x = x;
 	i2c_buf.pointer_y = y;
 	i2c_buf.wheel_h = h;
@@ -1253,7 +1253,7 @@ void mouse_display_loop() {
 					lcd_text_set(3, lcd_bg_color, true,"TOUCH RELEASE");
 					touch_mode = MODE_TOUCH_RELEASE;
 					axis_old   = axis_0;
-			
+	
 					release_time = time_us_32();
 
 					// スクロール変数リセット
@@ -1321,7 +1321,7 @@ void mouse_display_loop() {
 				trigger_vibration(120);
 				
 				i2c_data_set(R_CLICK, 0, 0, 0, 0);
-				sleep_ms(50);	
+				sleep_ms(10);
 				i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
 	
 				touch_mode = MODE_NONE;
@@ -1337,7 +1337,7 @@ void mouse_display_loop() {
 					lcd_bg_color = BLACK;	
 				
 					i2c_data_set(L_CLICK, 0, 0, 0, 0);
-					sleep_ms(10);	
+					sleep_ms(10);
 					i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
 	
 					release_cnt = SG_CLICK_RELEASE_COUNT_LIMIT;
