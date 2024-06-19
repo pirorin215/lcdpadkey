@@ -71,6 +71,79 @@ typedef struct {
   uint8_t save_crc;
 } LOSA_t;
 
+// i2c通信用
+typedef struct
+{
+	uint8_t click;
+	int8_t pointer_x;
+	int8_t pointer_y;
+	int8_t wheel_h;
+	int8_t wheel_v;
+} simple_pointer_data_t;
+
+// 座標構造体
+typedef struct {
+  int16_t x;
+  int16_t y;
+}axis_t;
+const axis_t axis_0 = {0};	// 初期化用構造体
+
+// スクロール状態
+typedef struct {
+  int count;
+  int sum;
+  int last;
+}scroll_t;
+
+typedef enum {
+	NONE_CLICK,     // 0x00
+	L_CLICK,     // 0x01
+	R_CLICK,    // 0x02
+	MIDDLE_CLICK,   // 0x03
+	CMD_POINTER,    // 0x04
+	NOCHANGE_CLICK, // 0x05
+} CLICK_I2C;
+
+typedef enum {
+  MODE_NONE,
+  MODE_TOUCHING,
+  MODE_TOUCH_RELEASE,
+  MODE_SCROLL_Y,
+  MODE_SCROLL_X,
+  MODE_DRAG,
+  MODE_L_CLICK,
+  MODE_R_CLICK,
+  MODE_GYRO,
+  MODE_GYRO_SCROLL,
+} TOUCH_MODE;
+
+typedef enum {
+	SG_SLEEP,
+	SG_DRUG_DIR,
+	SG_DRUG_LEN,
+	SG_R_CLICK_DIR,
+	SG_R_CLICK_LEN,
+	SG_SCROLL_Y_DIR,
+	SG_SCROLL_Y_LEN,
+	SG_SCROLL_X_DIR,
+	SG_SCROLL_X_LEN,
+	SG_TITLE_SPEED,
+	SG_GYRO,
+	SG_GYRO_SCROLL,
+	SG_VIBRATION,
+	SG_GAME,
+	SG_EXIT,
+	SG_NUM,
+} SG_ITEM;
+
+typedef enum {
+	DIR_TOP,
+	DIR_BOTTOM,
+	DIR_RIGHT,
+	DIR_LEFT,
+	DIR_NUM,
+} SG_DIR;
+
 static LOSA_t* plosa=(LOSA_t*)losabuf;
 #define LOSASIZE (&plosa->dummy - &plosa->theme)
 
@@ -94,95 +167,14 @@ bool ceasefire=false;
 
 static int LCD_ADDR = 0x6b;
 
-bool reserved_addr(uint8_t addr) {
-  return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
-}
-
-bool i2c_scan(){
-	printf("\nI2C Bus Scan \n");
-	bool b_cst816_enable = false;
-	printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
-	for (int addr = 0; addr < (1 << 7); ++addr) {
-			if (addr % 16 == 0) {					printf("%02x ", addr);			}
-			int ret;
-			uint8_t rxdata;
-			if (reserved_addr(addr))
-					ret = PICO_ERROR_GENERIC;
-			else
-					ret = i2c_read_blocking(I2C_PORT, addr, &rxdata, 1, false);
-
-			if(ret >= 0 && addr == CST816_ADDR){
-				b_cst816_enable = true;
-				CBUT0 = CBUT_TOUCH;
-				LCD_RST_PIN = 13;
-			}
-			printf(ret < 0 ? "." : "@");
-			printf(addr % 16 == 15 ? "\n" : "  ");
-	}
-	return b_cst816_enable;
-}
-
 #define MS 1000
 #define US 1000000
 #define BUTD 500  // delay between possible button presses (default: 500, half of a second)
 uint32_t rebootcounter = 0;
 uint32_t button0_time=0;
 
-void gpio_callback(uint gpio, uint32_t events) {
-	if(events&GPIO_IRQ_EDGE_RISE){
-		if(gpio==CBUT0){ceasefire=true;fire_pressed=false;rebootcounter=0;}
-		if(gpio==QMIINT1){ deepsleep=false; }
-		if(gpio==Touch_INT_PIN){
-			deepsleep=false;
-			flag_touch = 1;
-		}
-	}
-
-	if(events&GPIO_IRQ_EDGE_FALL){
-		if(gpio==CBUT0 && !fire && (((time_us_32()-button0_time)/MS)>=BUTD)){ceasefire=false;fire=true;button0_time = time_us_32();fire_pressed=true;}
-	}
-
-}
-
-void draw_background() { }
-
-void draw_gfx(){ }
-
-void draw_text(){ }
-
-typedef struct
-{
-	uint8_t click;
-	int8_t pointer_x;
-	int8_t pointer_y;
-	int8_t wheel_h;
-	int8_t wheel_v;
-} simple_pointer_data_t;
-
-typedef enum {
-	NONE_CLICK,     // 0x00
-	L_CLICK,     // 0x01
-	R_CLICK,    // 0x02
-	MIDDLE_CLICK,   // 0x03
-	CMD_POINTER,    // 0x04
-	NOCHANGE_CLICK, // 0x05
-} CLICK_I2C;
-
 volatile uint8_t flag_event = 0;
 volatile simple_pointer_data_t i2c_buf = {0};
-
-typedef enum {
-  MODE_NONE,
-  MODE_TOUCHING,
-  MODE_TOUCH_RELEASE,
-  MODE_SCROLL_Y,
-  MODE_SCROLL_X,
-  MODE_DRAG,
-  MODE_L_CLICK,
-  MODE_R_CLICK,
-  MODE_GYRO,
-  MODE_GYRO_SCROLL,
-} TOUCH_MODE;
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 240
@@ -224,6 +216,9 @@ const uint16_t COLOR_SCROLL_X = GREEN;
 #define SG_ITEM_HEIGHT  60
 #define SG_ITEM_WIDTH  115
 
+#define CHECK_NUMBER_SG 123
+#define VIBRATION_PIN 18
+
 // 設定画面の設定値のフレーム
 int SG_FRAME_VALUE[4] = {88, 137, 88 + 100,  137 + 25};
 
@@ -235,34 +230,80 @@ int SG_FRAME_NEXT[4] =  {125, 180, 125 + SG_ITEM_WIDTH - 30, 180 + SG_ITEM_HEIGH
 
 int SG_FRAME_RESET[4] =  { 40, 120,  60 + SG_ITEM_WIDTH + 20, 120 + SG_ITEM_HEIGHT - 10};
 
-typedef enum {
-	SG_SLEEP,
-	SG_DRUG_DIR,
-	SG_DRUG_LEN,
-	SG_R_CLICK_DIR,
-	SG_R_CLICK_LEN,
-	SG_SCROLL_Y_DIR,
-	SG_SCROLL_Y_LEN,
-	SG_SCROLL_X_DIR,
-	SG_SCROLL_X_LEN,
-	SG_TITLE_SPEED,
-	SG_GYRO,
-	SG_GYRO_SCROLL,
-	SG_VIBRATION,
-	SG_GAME,
-	SG_EXIT,
-	SG_NUM,
-} SG_ITEM;
+uint8_t g_sg_data[SG_NUM];	// 設定データ保存用
 
-typedef enum {
-	DIR_TOP,
-	DIR_BOTTOM,
-	DIR_RIGHT,
-	DIR_LEFT,
-	DIR_NUM,
-} SG_DIR;
+float acc[3], gyro[3];		// ジャイロセンサ
+unsigned int tim_count = 0;	// ジャイロセンサ
 
-uint8_t g_sg_data[SG_NUM];
+
+/** フラッシュデータの初期化 **/
+void init_sg(void) {
+	g_sg_data[SG_SLEEP]		= 4;
+	g_sg_data[SG_TITLE_SPEED]	= 4;
+	g_sg_data[SG_DRUG_DIR]		= DIR_TOP;
+	g_sg_data[SG_DRUG_LEN]		= 55;
+	g_sg_data[SG_R_CLICK_DIR]	= DIR_LEFT;
+	g_sg_data[SG_R_CLICK_LEN]	= 55;
+	g_sg_data[SG_SCROLL_Y_DIR]	= DIR_RIGHT;
+	g_sg_data[SG_SCROLL_Y_LEN]	= 55;
+	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
+	g_sg_data[SG_SCROLL_X_LEN]	= 55;
+	g_sg_data[SG_GYRO]		= 0;
+	g_sg_data[SG_GYRO_SCROLL]	= 0;
+	g_sg_data[SG_VIBRATION]		= 1;
+	g_sg_data[SG_GAME]		= 0;
+	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
+}
+
+bool reserved_addr(uint8_t addr) {
+  return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
+}
+
+bool i2c_scan(){
+	printf("\nI2C Bus Scan \n");
+	bool b_cst816_enable = false;
+	printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+	for (int addr = 0; addr < (1 << 7); ++addr) {
+			if (addr % 16 == 0) {					printf("%02x ", addr);			}
+			int ret;
+			uint8_t rxdata;
+			if (reserved_addr(addr))
+					ret = PICO_ERROR_GENERIC;
+			else
+					ret = i2c_read_blocking(I2C_PORT, addr, &rxdata, 1, false);
+
+			if(ret >= 0 && addr == CST816_ADDR){
+				b_cst816_enable = true;
+				CBUT0 = CBUT_TOUCH;
+				LCD_RST_PIN = 13;
+			}
+			printf(ret < 0 ? "." : "@");
+			printf(addr % 16 == 15 ? "\n" : "  ");
+	}
+	return b_cst816_enable;
+}
+
+void gpio_callback(uint gpio, uint32_t events) {
+	if(events&GPIO_IRQ_EDGE_RISE){
+		if(gpio==CBUT0){ceasefire=true;fire_pressed=false;rebootcounter=0;}
+		if(gpio==QMIINT1){ deepsleep=false; }
+		if(gpio==Touch_INT_PIN){
+			deepsleep=false;
+			flag_touch = 1;
+		}
+	}
+
+	if(events&GPIO_IRQ_EDGE_FALL){
+		if(gpio==CBUT0 && !fire && (((time_us_32()-button0_time)/MS)>=BUTD)){ceasefire=false;fire=true;button0_time = time_us_32();fire_pressed=true;}
+	}
+
+}
+
+void draw_background() { }
+
+void draw_gfx(){ }
+
+void draw_text(){ }
 
 void truncateString(char* text, int maxLength) {
   if (strlen(text) > maxLength) {
@@ -286,27 +327,6 @@ void load_sg_from_flash(void) {
 		g_sg_data[i] = flash_target_contents[i];
 		printf("SG %2d = %d\r\n", i, g_sg_data[i]);
 	}
-}
-
-#define CHECK_NUMBER_SG 123
-
-/** フラッシュデータの初期化 **/
-void init_sg(void) {
-	g_sg_data[SG_SLEEP]		= 4;
-	g_sg_data[SG_TITLE_SPEED]	= 4;
-	g_sg_data[SG_DRUG_DIR]		= DIR_TOP;
-	g_sg_data[SG_DRUG_LEN]		= 55;
-	g_sg_data[SG_R_CLICK_DIR]	= DIR_LEFT;
-	g_sg_data[SG_R_CLICK_LEN]	= 55;
-	g_sg_data[SG_SCROLL_Y_DIR]	= DIR_RIGHT;
-	g_sg_data[SG_SCROLL_Y_LEN]	= 55;
-	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
-	g_sg_data[SG_SCROLL_X_LEN]	= 55;
-	g_sg_data[SG_GYRO]		= 0;
-	g_sg_data[SG_GYRO_SCROLL]	= 0;
-	g_sg_data[SG_VIBRATION]		= 1;
-	g_sg_data[SG_GAME]		= 0;
-	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
 }
 
 /** フラッシュデータチェック **/
@@ -453,8 +473,6 @@ void lcd_circle_guard(uint16_t x, uint16_t y, uint16_t radius, uint16_t color, u
 	lcd_circle(x, y, radius, color, ps, fill);
 }
 
-#define VIBRATION_PIN 18
-
 // グローバル変数
 volatile bool vibration_active = false;
 
@@ -493,7 +511,6 @@ void trigger_vibration(int timer) {
 
 /** 中心点を光らせる処理 **/
 int64_t center_point_flash_callback(alarm_id_t id, void *user_data) {
-
 	int16_t color = (rand() % 65535) + 1;
 	
 	lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 4, color, 1, true);
@@ -504,7 +521,6 @@ int64_t center_point_flash_callback(alarm_id_t id, void *user_data) {
 }
 
 void center_point_flash(int count) {
-
 	printf("center_point_flash count=%d\r\n", count);
 	for(int i=0; i < count; i++ ) {
 		printf("center_point_flash i=%d\r\n", i);
@@ -512,9 +528,6 @@ void center_point_flash(int count) {
 		set_timer(50*i, center_point_flash_callback, itmp);
 	}	
 }
-
-// フラッシュメモリのCSピンを定義
-const uint FLASH_CS_PIN = 1;
 
 /** 初期化処理 **/
 void init() {
@@ -600,14 +613,6 @@ void init() {
 #endif
 }
 
-// 座標構造体
-typedef struct {
-  int16_t x;
-  int16_t y;
-}axis_t;
-
-const axis_t axis_0 = {0}; // 初期化用構造体
-
 void i2c_data_set(int click, int x, int y, int h, int v) {
 	flag_event = 1;
 	//printf("i2c_data_set click=%d\r\n", click);
@@ -619,8 +624,6 @@ void i2c_data_set(int click, int x, int y, int h, int v) {
 }
 
 /** ジャイロセンサ用 **/
-float acc[3], gyro[3];
-unsigned int tim_count = 0;
 int16_t get_acc02f(float f0, float f1, float FACT){
   switch(plosa->scandir){
     case 0: return (int16_t)(f0/FACT);break;
@@ -1034,12 +1037,6 @@ void sg_display_loop() {
 
 	start_display();			// 画面クリア
 }
-
-typedef struct {
-  int count;
-  int sum;
-  int last;
-}scroll_t;
 
 void scroll_function_inner(bool bY, int move) {
 	printf("scroll bY=%d move=%d\n", bY, move);
