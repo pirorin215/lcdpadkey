@@ -623,7 +623,7 @@ void init() {
 
 void i2c_data_set(int click, int x, int y, int h, int v) {
 	flag_event = 1;
-	//printf("i2c_data_set click=%d\r\n", click);
+	printf("i2c_data_set click=%d x:%d y:%d h:%d v:%d\r\n", click, x, y, h, v);
 	i2c_buf.click = click == NOCHANGE_CLICK ? i2c_buf.click : click;
 	i2c_buf.pointer_x = x;
 	i2c_buf.pointer_y = y;
@@ -697,10 +697,15 @@ bool isRangePress(axis_t axis_cur, int dir, int len) {
 	return false;
 }
 
+/** 前回と近い場所をタッチ判定 **/
+bool isNearbyPoint(axis_t axis1, axis_t axis2, int delta) {
+	return abs_value(axis1.x, axis2.x) < delta && abs_value(axis1.y, axis2.y) < delta;
+}
+
 /** 押し続け判定 **/
 bool isKeepPress(int release_cnt, axis_t axis_touch, axis_t axis_cur, int dir, int len) {
 
-	if(release_cnt > 20 && abs_value(axis_touch.x, axis_cur.x) < 5 && abs_value(axis_touch.y, axis_cur.y) < 5) {
+	if(release_cnt > 20 && isNearbyPoint(axis_touch, axis_cur, 5)) {
 		bool bInRange = false;
 		switch(dir) {
 			case DIR_TOP:
@@ -1128,9 +1133,12 @@ void mouse_display_loop() {
 	uint16_t lcd_bg_color = BLACK;			// LCD背景色
 	uint32_t last_touch_time = time_us_32();	// 最後に触った時刻
 	uint32_t start_drag_time = time_us_32();	// ドラッグ開始時刻
+	uint32_t release_time = time_us_32();		// 最後に離した時刻
+	uint32_t delta_drag_time = 0;
 
 	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
+	
 
 	scroll_t scrt = {0};				// スクロール変数
 
@@ -1165,6 +1173,12 @@ void mouse_display_loop() {
 			if( ((time_us_32()-last_touch_time)/MS) > TOUCH_START_MSEC_LIMIT){
 				printf("TOUCH START\r\n");
 				touch_mode = MODE_TOUCHING;
+
+				// Mac風のドラッグ開始
+				if((time_us_32() - release_time)/MS < 200 && isNearbyPoint(axis_touch, axis_cur, 20)) {
+					touch_mode = MODE_DRAG;
+					trigger_vibration(150);
+				}
 		
 				// 縦スクロール判定
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
@@ -1191,6 +1205,7 @@ void mouse_display_loop() {
 			if(isKeepPress(release_cnt, axis_touch, axis_cur, g_sg_data[SG_DRUG_DIR], g_sg_data[SG_DRUG_LEN])) {
 				printf("drag start\r\n");
 				touch_mode = MODE_DRAG;
+				trigger_vibration(150);
 			}
 		
 			// 右クリック判定
@@ -1239,6 +1254,8 @@ void mouse_display_loop() {
 					lcd_text_set(3, lcd_bg_color, true,"TOUCH RELEASE");
 					touch_mode = MODE_TOUCH_RELEASE;
 					axis_old   = axis_0;
+			
+					release_time = time_us_32();
 
 					// スクロール変数リセット
 					scrt.count = 0;
@@ -1289,8 +1306,6 @@ void mouse_display_loop() {
 				break;	
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
-				
-				trigger_vibration(150);
 
 				lcd_bg_color = COLOR_DRAG;
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
@@ -1315,11 +1330,9 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
-				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
+				delta_drag_time = (time_us_32()-start_drag_time)/MS;
 
-				uint32_t delta_drag_time = (time_us_32()-start_drag_time)/MS;
-				
-				if(axis_delta.x < 20 && axis_delta.y < 20 && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
+				if(isNearbyPoint(axis_old, axis_cur, 20) && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
 					// 左クリック
 					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
 					lcd_bg_color = BLACK;	
