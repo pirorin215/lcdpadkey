@@ -95,6 +95,7 @@ typedef struct {
   int last;
 }scroll_t;
 
+// I2C通信
 typedef enum {
 	NONE_CLICK,     // 0x00
 	L_CLICK,     // 0x01
@@ -104,6 +105,7 @@ typedef enum {
 	NOCHANGE_CLICK, // 0x05
 } CLICK_I2C;
 
+// タッチ操作状態
 typedef enum {
   MODE_NONE,
   MODE_TOUCHING,
@@ -117,6 +119,7 @@ typedef enum {
   MODE_GYRO_SCROLL,
 } TOUCH_MODE;
 
+// 設定項目のリスト
 typedef enum {
 	SG_SLEEP,
 	SG_DRUG_DIR,
@@ -125,8 +128,10 @@ typedef enum {
 	SG_R_CLICK_LEN,
 	SG_SCROLL_Y_DIR,
 	SG_SCROLL_Y_LEN,
+	SG_SCROLL_Y_REV,
 	SG_SCROLL_X_DIR,
 	SG_SCROLL_X_LEN,
+	SG_SCROLL_X_REV,
 	SG_TITLE_SPEED,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
@@ -136,6 +141,7 @@ typedef enum {
 	SG_NUM,
 } SG_ITEM;
 
+// 特殊操作の液晶画面位置（上下左右)
 typedef enum {
 	DIR_TOP,
 	DIR_BOTTOM,
@@ -246,8 +252,10 @@ void init_sg(void) {
 	g_sg_data[SG_R_CLICK_LEN]	= 55;
 	g_sg_data[SG_SCROLL_Y_DIR]	= DIR_RIGHT;
 	g_sg_data[SG_SCROLL_Y_LEN]	= 55;
+	g_sg_data[SG_SCROLL_Y_REV]	= 0;
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
+	g_sg_data[SG_SCROLL_X_REV]	= 0;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
 	g_sg_data[SG_VIBRATION]		= 1;
@@ -752,8 +760,10 @@ char *get_sg_itemname(int sg_no) {
 		case SG_R_CLICK_LEN:	snprintf(tmps, sz, "%02d:R CLICK LEN", sg_no); break;
 		case SG_SCROLL_Y_DIR:	snprintf(tmps, sz, "%02d:SCROLL Y DIR", sg_no); break;
 		case SG_SCROLL_Y_LEN:	snprintf(tmps, sz, "%02d:SCROLL Y LEN", sg_no); break;
+		case SG_SCROLL_Y_REV:	snprintf(tmps, sz, "%02d:SCROLL Y REV", sg_no); break;
 		case SG_SCROLL_X_DIR:	snprintf(tmps, sz, "%02d:SCROLL X DIR", sg_no); break;
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
+		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
@@ -884,6 +894,8 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			break;
 		case SG_VIBRATION:
 		case SG_GAME:
+		case SG_SCROLL_Y_REV:
+		case SG_SCROLL_X_REV:
 			max=1;
 			break;
 	}
@@ -1059,9 +1071,23 @@ void scroll_function_inner(bool bY, int move) {
 
 /** スクロール処理 **/
 scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_bg_color) {
-	int delta = bY ? 
-	    (g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT ) ? -axis_delta.y : -axis_delta.x :
-	    (g_sg_data[SG_SCROLL_X_DIR] == DIR_TOP  || g_sg_data[SG_SCROLL_X_DIR] == DIR_BOTTOM) ?  axis_delta.x :  axis_delta.y ;
+
+	int delta = 0;
+	if(bY) {
+		if(g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT ){
+ 			delta = -axis_delta.y;
+		} else {
+ 			delta = -axis_delta.x;
+		}
+		delta = g_sg_data[SG_SCROLL_Y_REV] ? -1 * delta : delta; // 反転
+	} else {
+	    	if(g_sg_data[SG_SCROLL_X_DIR] == DIR_TOP  || g_sg_data[SG_SCROLL_X_DIR] == DIR_BOTTOM){
+			delta = axis_delta.x ;
+		} else {
+			delta = axis_delta.y ;
+		} 
+ 		delta = g_sg_data[SG_SCROLL_X_REV] ? -1 * delta : delta; // 反転
+	}
 
 	if(abs(delta) >= 1) {
 		lcd_text_set(3, lcd_bg_color, true, "SCROLL %s:%d", bY ? "Y": "X", delta);
