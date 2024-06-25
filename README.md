@@ -1,4 +1,4 @@
-# rp2040-lcd-1.28-trackpad
+# lcdpadkey
 ### rp2040-lcd-1.28-trackpad for trackpad
 
 ## How to build
@@ -8,8 +8,8 @@
 1. Download program source
 
 ```
-git clone https://github.com/pirorin215/rp2040-lcd-1.28-trackpad
-cd rp2040-lcd-1.28-trackpad
+git clone https://github.com/pirorin215/lcdpadkey
+cd lcdpadkey
 ```
 
 2. pico-sdk PATH
@@ -33,7 +33,8 @@ make
 
 1. Download program source
 ```
-git clone https://github.com/pirorin215/rp2040-lcd-1.28-trackpad
+git clone https://github.com/pirorin215/lcdpadkey
+cd lcdpadkey
 ```
 
 2. pico-sdk PATH
