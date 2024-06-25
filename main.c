@@ -191,6 +191,7 @@ volatile simple_pointer_data_t i2c_buf = {0};
 
 #define SG_CLICK_RELEASE_COUNT_LIMIT  5 // クリック判定
 #define TOUCH_START_MSEC_LIMIT   100 // 新しいタッチ開始の判定msec
+#define DRAG_START_MSEC          150 // ダブルタップドラッグの判定msec
 #define DRAG_UNDER_LIMIT_MSEC    300 // ドラッグ開始から解除までの最低msec
 
 #define FLASH_TARGET_OFFSET 0x1F0000 // W25Q16JVの最終ブロック(Block31)のセクタ0の先頭アドレス
@@ -1120,6 +1121,25 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 	return scrt;
 }
 
+volatile bool g_flag_click = false;
+
+/** クリック確定の通信を送信する処理 **/
+int64_t click_commit(alarm_id_t id, void *user_data) {
+	if(g_flag_click) {
+		i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
+		g_flag_click = false;
+	}
+
+    	return 0;
+}
+
+void click_commit_timer(int msec) {
+	printf("click_commit_timer msec=%d\r\n", msec);
+	int *itmp;
+	g_flag_click = true;
+	set_timer(msec, click_commit, itmp);
+}
+
 /** メイン処理ループ **/
 void mouse_display_loop() {
 	axis_t axis_cur;				// 現在座標
@@ -1174,7 +1194,7 @@ void mouse_display_loop() {
 				touch_mode = MODE_TOUCHING;
 
 				// Mac風のドラッグ開始
-				if((time_us_32() - release_time)/MS < 200 && isNearbyPoint(axis_touch, axis_cur, 20)) {
+				if((time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
 					touch_mode = MODE_DRAG;
 					trigger_vibration(150);
 				}
@@ -1285,6 +1305,7 @@ void mouse_display_loop() {
 				break;	
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
+					g_flag_click = false; // 直前のクリック確定をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
@@ -1295,6 +1316,7 @@ void mouse_display_loop() {
 				break;	
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
+					g_flag_click = false; // 直前のクリック確定をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
@@ -1305,6 +1327,8 @@ void mouse_display_loop() {
 				break;	
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
+
+				g_flag_click = false; // 直前のクリック確定をキャンセル
 
 				lcd_bg_color = COLOR_DRAG;
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
@@ -1321,9 +1345,8 @@ void mouse_display_loop() {
 				trigger_vibration(120);
 				
 				i2c_data_set(R_CLICK, 0, 0, 0, 0);
-				sleep_ms(10);
-				i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
-	
+				click_commit_timer(DRAG_START_MSEC+10);
+
 				touch_mode = MODE_NONE;
 				axis_touch = axis_0;
 				axis_old   = axis_0;
@@ -1331,14 +1354,18 @@ void mouse_display_loop() {
 			case MODE_NONE:
 				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
 				delta_drag_time = (time_us_32()-start_drag_time)/MS;
+
+				if(axis_delta.x < 20 && axis_delta.y < 20 && delta_drag_time < DRAG_UNDER_LIMIT_MSEC) {
+					g_flag_click = true; // 直前のクリック確定キャンセルをキャンセル
+				}
+
 				if(axis_delta.x < 20 && axis_delta.y < 20 && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
 					// 左クリック
 					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
 					lcd_bg_color = BLACK;	
 				
 					i2c_data_set(L_CLICK, 0, 0, 0, 0);
-					sleep_ms(10);
-					i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
+					click_commit_timer(DRAG_START_MSEC+10);
 	
 					release_cnt = SG_CLICK_RELEASE_COUNT_LIMIT;
 					axis_old   = axis_0;
