@@ -72,8 +72,7 @@ typedef struct {
 } LOSA_t;
 
 // i2c通信用
-typedef struct
-{
+typedef struct {
 	uint8_t click;
 	int8_t pointer_x;
 	int8_t pointer_y;
@@ -192,7 +191,7 @@ volatile simple_pointer_data_t i2c_buf = {0};
 #define SG_CLICK_RELEASE_COUNT_LIMIT  5 // クリック判定
 #define TOUCH_START_MSEC_LIMIT   100 // 新しいタッチ開始の判定msec
 #define DRAG_START_MSEC          150 // ダブルタップドラッグの判定msec
-#define DRAG_UNDER_LIMIT_MSEC    300 // ドラッグ開始から解除までの最低msec
+#define DRAG_UNDER_LIMIT_MSEC    160 // ドラッグ開始から解除までの最低msec
 
 #define FLASH_TARGET_OFFSET 0x1F0000 // W25Q16JVの最終ブロック(Block31)のセクタ0の先頭アドレス
 
@@ -466,10 +465,6 @@ static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
 }
 
 
-int abs_value(int a, int b) {
-	return abs(abs(a) - abs(b));
-}
-
 /** lcd_circle の範囲ガード **/
 void lcd_circle_guard(uint16_t x, uint16_t y, uint16_t radius, uint16_t color, uint16_t ps, bool fill) {
 
@@ -696,6 +691,10 @@ bool isRangePress(axis_t axis_cur, int dir, int len) {
 		return true;
 	}
 	return false;
+}
+
+int abs_value(int a, int b) {
+	return abs(abs(a) - abs(b));
 }
 
 /** 前回と近い場所をタッチ判定 **/
@@ -1196,7 +1195,6 @@ void mouse_display_loop() {
 				// Mac風のドラッグ開始
 				if((time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
 					touch_mode = MODE_DRAG;
-					trigger_vibration(150);
 				}
 		
 				// 縦スクロール判定
@@ -1224,7 +1222,6 @@ void mouse_display_loop() {
 			if(isKeepPress(release_cnt, axis_touch, axis_cur, g_sg_data[SG_DRUG_DIR], g_sg_data[SG_DRUG_LEN])) {
 				printf("drag start\r\n");
 				touch_mode = MODE_DRAG;
-				trigger_vibration(150);
 			}
 		
 			// 右クリック判定
@@ -1331,6 +1328,8 @@ void mouse_display_loop() {
 				g_flag_click = false; // 直前のクリック確定をキャンセル
 
 				lcd_bg_color = COLOR_DRAG;
+				trigger_vibration(150);
+
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
 				i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur;
@@ -1352,14 +1351,10 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
-				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
 				delta_drag_time = (time_us_32()-start_drag_time)/MS;
 
-				if(axis_delta.x < 20 && axis_delta.y < 20 && delta_drag_time < DRAG_UNDER_LIMIT_MSEC) {
-					g_flag_click = true; // 直前のクリック確定キャンセルをキャンセル
-				}
-
-				if(axis_delta.x < 20 && axis_delta.y < 20 && release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
+				//if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
+				if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT) {
 					// 左クリック
 					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
 					lcd_bg_color = BLACK;	
