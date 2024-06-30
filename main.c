@@ -1194,6 +1194,7 @@ void mouse_display_loop() {
 
 				// Mac風のドラッグ開始
 				if((time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
+					printf("double touch drag start\r\n");
 					touch_mode = MODE_DRAG;
 				}
 		
@@ -1351,6 +1352,7 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
+				// TODO: 今のところdelta_drag_timeもstart_drag_timeも使ってない、無意味
 				delta_drag_time = (time_us_32()-start_drag_time)/MS;
 
 				//if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
