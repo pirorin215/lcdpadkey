@@ -1151,9 +1151,9 @@ void mouse_display_loop() {
 	int click_stat_old = NONE_CLICK;		// クリック状態の一つ前の状態
 	uint16_t lcd_bg_color = BLACK;			// LCD背景色
 	uint32_t last_touch_time = time_us_32();	// 最後に触った時刻
-	uint32_t start_drag_time = time_us_32();	// ドラッグ開始時刻
 	uint32_t release_time = time_us_32();		// 最後に離した時刻
-	uint32_t delta_drag_time = 0;
+
+	bool b_drag_prestate = false;			// ドラッグ開始前のクリック状態
 
 	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
 	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
@@ -1194,8 +1194,8 @@ void mouse_display_loop() {
 
 				// Mac風のドラッグ開始
 				if((time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
-					printf("double touch drag start\r\n");
-					touch_mode = MODE_DRAG;
+					printf("double touch drag prestage\r\n");
+					b_drag_prestate = true;
 				}
 		
 				// 縦スクロール判定
@@ -1296,10 +1296,26 @@ void mouse_display_loop() {
 		// 各種操作	
 		switch(touch_mode) {
 			case MODE_TOUCHING:
-				lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
-				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
-				i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
-				axis_old = axis_cur;
+				if(b_drag_prestate && !isNearbyPoint(axis_touch, axis_cur, 3)) {
+					// ドラッグ前段階　かつ　タッチ状態で閾値以上離れた場合
+					b_drag_prestate = false;
+					// TODO: 共通化したい
+					lcd_text_set(3, lcd_bg_color, true, "DRAG");
+
+					g_flag_click = false; // 直前のクリック確定をキャンセル
+
+					lcd_bg_color = COLOR_DRAG;
+					trigger_vibration(150);
+
+					axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
+					i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
+					axis_old = axis_cur;
+				} else {
+					lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
+					axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
+					i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
+					axis_old = axis_cur; 
+				}
 				break;	
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
@@ -1335,8 +1351,6 @@ void mouse_display_loop() {
 				i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur;
 
-				start_drag_time = time_us_32(); // ドラッグ開始時刻保存
-
 				break;	
 			case MODE_R_CLICK:
 				lcd_text_set(3, lcd_bg_color, true, "R CLICK");
@@ -1352,18 +1366,15 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 			case MODE_NONE:
-				// TODO: 今のところdelta_drag_timeもstart_drag_timeも使ってない、無意味
-				delta_drag_time = (time_us_32()-start_drag_time)/MS;
-
-				//if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT && delta_drag_time > DRAG_UNDER_LIMIT_MSEC) {
 				if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT) {
+					b_drag_prestate = false;
 					// 左クリック
-					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d delta_drag_time=%d", release_cnt, delta_drag_time);
+					lcd_text_set(3, lcd_bg_color, true, "L CLICK release_cnt=%d", release_cnt);
+
 					lcd_bg_color = BLACK;	
-				
+			
 					i2c_data_set(L_CLICK, 0, 0, 0, 0);
 					click_commit_timer(DRAG_START_MSEC+10);
-	
 					release_cnt = SG_CLICK_RELEASE_COUNT_LIMIT;
 					axis_old   = axis_0;
 				}
