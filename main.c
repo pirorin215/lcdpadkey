@@ -94,6 +94,12 @@ typedef struct {
   int last;
 }scroll_t;
 
+// 設定画面呼び出し条件
+typedef struct {
+	int cnt;              // 設定画面の操作カウント
+	uint32_t time;        // 設定画面の操作開始時刻
+}sg_trigger_t;
+
 // I2C通信
 typedef enum {
 	NONE_CLICK,     // 0x00
@@ -132,6 +138,7 @@ typedef enum {
 	SG_SCROLL_X_LEN,
 	SG_SCROLL_X_REV,
 	SG_TITLE_SPEED,
+	SG_TAP_DRAG,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
 	SG_VIBRATION,
@@ -256,6 +263,7 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_SCROLL_X_REV]	= 0;
+	g_sg_data[SG_TAP_DRAG]		= 1;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
 	g_sg_data[SG_VIBRATION]		= 1;
@@ -770,6 +778,7 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
+		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
 		case SG_VIBRATION:	snprintf(tmps, sz, "%02d:VIBRATION", sg_no); break;
@@ -811,6 +820,7 @@ void lcd_sg_draw(int sg_no) {
 	switch(sg_no) {
 		case SG_SLEEP:
 		case SG_TITLE_SPEED:
+		case SG_TAP_DRAG:
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 		case SG_VIBRATION:
@@ -897,6 +907,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_GYRO_SCROLL:
 			max=3;
 			break;
+		case SG_TAP_DRAG:
 		case SG_VIBRATION:
 		case SG_GAME:
 		case SG_SCROLL_Y_REV:
@@ -1120,7 +1131,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 	return scrt;
 }
 
-volatile bool g_flag_click = false;
+volatile bool g_flag_click = false; // クリック確定の送信判定フラグ
 
 /** クリック確定の通信を送信する処理 **/
 int64_t click_commit(alarm_id_t id, void *user_data) {
@@ -1132,11 +1143,97 @@ int64_t click_commit(alarm_id_t id, void *user_data) {
     	return 0;
 }
 
+/** クリック確定のコールバック設定 **/
 void click_commit_timer(int msec) {
 	printf("click_commit_timer msec=%d\r\n", msec);
 	int *itmp;
 	g_flag_click = true;
 	set_timer(msec, click_commit, itmp);
+}
+
+/** ジャイロ操作 **/
+axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
+	// ジャイロ操作取得
+	QMI8658_read_xyz(acc, gyro, &tim_count);		
+	int8_t gyroY = (int8_t)get_acc0();
+	int8_t gyroX = (int8_t)get_acc1();
+
+	if(g_sg_data[SG_GYRO] > 0) {
+		// ジャイロでポインタ操作
+		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
+			i2c_data_set(NOCHANGE_CLICK, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
+		}
+	} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
+		// ジャイロでスクロール
+		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
+			printf("gyro scroll\n");
+			i2c_data_set(NOCHANGE_CLICK, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
+		}
+	}
+
+	// ジャイロ状態表示
+	if(abs(abs(axis_gyro_old.x) - abs(gyroX)) > 0 || abs(abs(axis_gyro_old.y) - abs(gyroY)) > 0 ) {
+		screenSaverOff();
+		// ジャイロの値を表示
+		lcd_text_set(2, lcd_bg_color, false, "GX=%d GY=%d", gyroX, gyroY);
+		
+		// 古い方を消す	
+		lcd_circle_guard  (SCREEN_WIDTH / 2 + axis_gyro_old.x * 2, SCREEN_HEIGHT / 2 - axis_gyro_old.y * 2, 4, lcd_bg_color, 1, true);
+		
+		// 中心点	
+		lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 6, WHITE, 1, false);
+
+		if(gyroX == 0 && gyroY ==0) {
+			// 中央の場合
+			if(g_sg_data[SG_GAME] == 1) {
+				trigger_vibration(300);
+				center_point_flash(10);
+			}
+		} else {
+			// 今のジャイロ値の場所を描画
+			lcd_circle_guard  (SCREEN_WIDTH / 2 + gyroX * 2, SCREEN_HEIGHT / 2 - gyroY * 2, 4, RED, 1, true);
+		}
+		
+		axis_gyro_old.x = gyroX;
+		axis_gyro_old.y = gyroY;
+	}
+
+	return axis_gyro_old;
+}
+
+/** 設定画面呼び出し判定 **/
+sg_trigger_t sg_trigger_function(sg_trigger_t sg_trigger, axis_t axis_cur, uint16_t lcd_bg_color) {
+	// 設定画面呼び出し操作時間判定
+	bool b_sg_trigger_time = (time_us_32()-sg_trigger.time)/MS < TRIGGER_SG_TIME;
+
+	// 設定画面の呼び出し操作状態判定
+	if(       sg_trigger.cnt == 0 && axis_cur.x < TRIGGER_SG_LEFT) {
+		printf("sg_trigger.cnt=%d\r\n", sg_trigger.cnt);
+		sg_trigger.cnt++;
+	} else if(sg_trigger.cnt == 1 && axis_cur.x > TRIGGER_SG_RIGHT) {
+		printf("sg_trigger.cnt=%d\r\n", sg_trigger.cnt);
+		sg_trigger.cnt++;
+	} else if(sg_trigger.cnt == 2 && axis_cur.x < TRIGGER_SG_LEFT) {
+		printf("sg_trigger.cnt=%d\r\n", sg_trigger.cnt);
+		sg_trigger.cnt++;
+	} else if(sg_trigger.cnt == 3 && axis_cur.x > TRIGGER_SG_RIGHT) {
+		printf("sg_trigger.cnt=%d\r\n", sg_trigger.cnt);
+		if(b_sg_trigger_time) {
+			lcd_text_set(3, lcd_bg_color, true, "SG START");
+			sg_display_loop(); // 設定画面呼び出し
+			sg_trigger.cnt=0;
+		}
+	}
+
+	// 設定画面の呼び出し操作時間切れ
+	if(!b_sg_trigger_time) {
+		// 設定操作開始状態クリア
+		lcd_text_set(3, lcd_bg_color, false,"");
+		printf("sg_trigger clear!!\r\n");
+		sg_trigger.cnt = 0;
+		sg_trigger.time = time_us_32();
+	}
+	return sg_trigger;
 }
 
 /** メイン処理ループ **/
@@ -1155,8 +1252,8 @@ void mouse_display_loop() {
 
 	bool b_drag_prestate = false;			// ドラッグ開始前のクリック状態
 
-	int sg_trigger_cnt = 0;				// 設定画面の操作カウント
-	uint32_t sg_trigger_time = time_us_32();	// 設定画面の操作開始時刻
+	sg_trigger_t sg_trigger;
+	sg_trigger.time = time_us_32();
 
 	scroll_t scrt = {0};				// スクロール変数
 
@@ -1176,9 +1273,7 @@ void mouse_display_loop() {
 		// タッチが行われた場合
 		if(flag_touch){
 			release_cnt++;
-	
 			screenSaverOff();	
-
 			axis_cur = axis_rotate(); // 画面方向に合わせてX,Y座標を補正して取得
 		
 			// 軌跡を表示
@@ -1192,8 +1287,8 @@ void mouse_display_loop() {
 				printf("TOUCH START\r\n");
 				touch_mode = MODE_TOUCHING;
 
-				// Mac風のドラッグ開始
-				if((time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
+				// タップによるドラッグ開始判定
+				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
 					printf("double touch drag prestage\r\n");
 					b_drag_prestate = true;
 				}
@@ -1219,48 +1314,20 @@ void mouse_display_loop() {
 				axis_touch = axis_cur;
 			} 
 				
-			// ドラッグ開始判定
+			// 長押しドラッグ開始判定
 			if(isKeepPress(release_cnt, axis_touch, axis_cur, g_sg_data[SG_DRUG_DIR], g_sg_data[SG_DRUG_LEN])) {
 				printf("drag start\r\n");
 				touch_mode = MODE_DRAG;
 			}
 		
-			// 右クリック判定
+			// 長押し右クリック判定
 			if(isKeepPress(release_cnt, axis_touch, axis_cur, g_sg_data[SG_R_CLICK_DIR], g_sg_data[SG_R_CLICK_LEN])) {
 				printf("r click\r\n");
 				touch_mode = MODE_R_CLICK;
 			}
 
-			// 設定画面呼び出し操作時間判定
-			bool b_sg_trigger_time = (time_us_32()-sg_trigger_time)/MS < TRIGGER_SG_TIME;
-
-			// 設定画面の呼び出し操作状態判定
-			if(       sg_trigger_cnt == 0 && axis_cur.x < TRIGGER_SG_LEFT) {
-				printf("sg_trigger_cnt=%d\r\n", sg_trigger_cnt);
-				sg_trigger_cnt++;
-			} else if(sg_trigger_cnt == 1 && axis_cur.x > TRIGGER_SG_RIGHT) {
-				printf("sg_trigger_cnt=%d\r\n", sg_trigger_cnt);
-				sg_trigger_cnt++;
-			} else if(sg_trigger_cnt == 2 && axis_cur.x < TRIGGER_SG_LEFT) {
-				printf("sg_trigger_cnt=%d\r\n", sg_trigger_cnt);
-				sg_trigger_cnt++;
-			} else if(sg_trigger_cnt == 3 && axis_cur.x > TRIGGER_SG_RIGHT) {
-				printf("sg_trigger_cnt=%d\r\n", sg_trigger_cnt);
-				if(b_sg_trigger_time) {
-					lcd_text_set(3, lcd_bg_color, true, "SG START");
-					sg_display_loop(); // 設定画面呼び出し
-					sg_trigger_cnt=0;
-				}
-			}
-
-			// 設定画面の呼び出し操作時間切れ
-			if(!b_sg_trigger_time) {
-				// 設定操作開始状態クリア
-				lcd_text_set(3, lcd_bg_color, false,"");
-				printf("sg_trigger clear!!\r\n");
-				sg_trigger_cnt = 0;
-				sg_trigger_time = time_us_32();
-			}
+			// 設定画面呼び出し判定
+			sg_trigger = sg_trigger_function(sg_trigger, axis_cur, lcd_bg_color);
 		
 			// 	
 			last_touch_time = time_us_32();
@@ -1291,31 +1358,15 @@ void mouse_display_loop() {
 					lcd_sleepon();
 				}
 			}
-		} // if(flag) END
+		} // if(flag_touch) END
 
 		// 各種操作	
 		switch(touch_mode) {
 			case MODE_TOUCHING:
-				if(b_drag_prestate && !isNearbyPoint(axis_touch, axis_cur, 3)) {
-					// ドラッグ前段階　かつ　タッチ状態で閾値以上離れた場合
-					b_drag_prestate = false;
-					// TODO: 共通化したい
-					lcd_text_set(3, lcd_bg_color, true, "DRAG");
-
-					g_flag_click = false; // 直前のクリック確定をキャンセル
-
-					lcd_bg_color = COLOR_DRAG;
-					trigger_vibration(150);
-
-					axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
-					i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
-					axis_old = axis_cur;
-				} else {
-					lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
-					axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
-					i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
-					axis_old = axis_cur; 
-				}
+				lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
+				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
+				i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
+				axis_old = axis_cur; 
 				break;	
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
@@ -1341,6 +1392,7 @@ void mouse_display_loop() {
 				break;	
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
+				b_drag_prestate = false;
 
 				g_flag_click = false; // 直前のクリック確定をキャンセル
 
@@ -1350,6 +1402,8 @@ void mouse_display_loop() {
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
 				i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur;
+				
+				touch_mode = MODE_TOUCHING;
 
 				break;	
 			case MODE_R_CLICK:
@@ -1384,54 +1438,17 @@ void mouse_display_loop() {
 				axis_old   = axis_0;
 				break;	
 		}
-
-		// ジャイロ操作取得
-		QMI8658_read_xyz(acc, gyro, &tim_count);		
-		int8_t gyroY = (int8_t)get_acc0();
-		int8_t gyroX = (int8_t)get_acc1();
-
-		if(g_sg_data[SG_GYRO] > 0) {
-			// ジャイロでポインタ操作
-			if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-				i2c_data_set(NOCHANGE_CLICK, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
-			}
-		} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
-			// ジャイロでスクロール
-			if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-				printf("gyro scroll\n");
-				i2c_data_set(NOCHANGE_CLICK, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
-			}
-		}
-
-		// ジャイロ状態表示
-		if(abs(abs(axis_gyro_old.x) - abs(gyroX)) > 0 || abs(abs(axis_gyro_old.y) - abs(gyroY)) > 0 ) {
-			screenSaverOff();
-			// ジャイロの値を表示
-			lcd_text_set(2, lcd_bg_color, false, "GX=%d GY=%d", gyroX, gyroY);
-			
-			// 古い方を消す	
-			lcd_circle_guard  (SCREEN_WIDTH / 2 + axis_gyro_old.x * 2, SCREEN_HEIGHT / 2 - axis_gyro_old.y * 2, 4, lcd_bg_color, 1, true);
-			
-			// 中心点	
-			lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 6, WHITE, 1, false);
-
-			if(gyroX == 0 && gyroY ==0) {
-				// 中央の場合
-				if(g_sg_data[SG_GAME] == 1) {
-					trigger_vibration(300);
-					center_point_flash(10);
-				}
-			} else {
-				// 今のジャイロ値の場所を描画
-				lcd_circle_guard  (SCREEN_WIDTH / 2 + gyroX * 2, SCREEN_HEIGHT / 2 - gyroY * 2, 4, RED, 1, true);
-			}
-			
-			axis_gyro_old.x = gyroX;
-			axis_gyro_old.y = gyroY;
-		}
 		
-		///////////////////////////////////////
+		// ダブルタップのドラッグ判定
+		if(b_drag_prestate && touch_mode == MODE_TOUCHING && !isNearbyPoint(axis_touch, axis_cur, 1)) {
+			// ドラッグ前段階　かつ　タッチ状態で閾値以上離れた場合
+			touch_mode = MODE_DRAG;
+		}
 
+		// ジャイロ操作
+		axis_gyro_old =	gyro_function(axis_gyro_old, lcd_bg_color);
+
+		// 画面描画
 		lcd_text_draw(lcd_bg_color);
 		lcd_display(b0);
 	}
