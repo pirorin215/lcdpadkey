@@ -139,6 +139,8 @@ typedef enum {
 	SG_SCROLL_X_REV,
 	SG_TITLE_SPEED,
 	SG_TAP_DRAG,
+	SG_ACC_LIMIT,
+	SG_ACC_RATE,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
 	SG_VIBRATION,
@@ -263,6 +265,8 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_SCROLL_X_REV]	= 0;
+	g_sg_data[SG_ACC_LIMIT]		= 12;
+	g_sg_data[SG_ACC_RATE]		= 1;
 	g_sg_data[SG_TAP_DRAG]		= 1;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
@@ -752,6 +756,25 @@ axis_t get_axis_delta(axis_t axis_cur, axis_t axis_old, double z) {
 	return axis_delta;
 }
 
+/** 加速処理 **/
+axis_t acc_axis_delta(axis_t axis_delta) {
+
+	double delta_value = sqrt(pow(axis_delta.x, 2) + pow(axis_delta.y, 2));
+
+	double acc = 1;
+	if(delta_value < g_sg_data[SG_ACC_LIMIT]) {
+		acc = 1;
+	} else {
+		acc = g_sg_data[SG_ACC_RATE];
+	}
+	printf("delta_value=%.1f acc=%.1f\n", delta_value, acc);
+
+	axis_delta.x = ceil(axis_delta.x * acc);
+	axis_delta.y = ceil(axis_delta.y * acc);
+
+	return axis_delta;
+}
+
 void lcd_frame_set(int frame[], int16_t lcd_color, uint8_t ps) {
 	lcd_frame(frame[0], frame[1], frame[2], frame[3], lcd_color, ps);
 }
@@ -778,6 +801,8 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
+		case SG_ACC_LIMIT:	snprintf(tmps, sz, "%02d:ACC LIMIT", sg_no); break;
+		case SG_ACC_RATE:	snprintf(tmps, sz, "%02d:ACC RATE", sg_no); break;
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
@@ -824,6 +849,8 @@ void lcd_sg_draw(int sg_no) {
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 		case SG_VIBRATION:
+		case SG_ACC_LIMIT:
+		case SG_ACC_RATE:
 		case SG_GAME:
 			if(g_sg_data[sg_no] == 0) {
 				strcat(tmps, "OFF");
@@ -906,6 +933,12 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 			max=3;
+			break;
+		case SG_ACC_LIMIT:
+			max=20;
+			break;
+		case SG_ACC_RATE:
+			max=10;
 			break;
 		case SG_TAP_DRAG:
 		case SG_VIBRATION:
@@ -1071,11 +1104,6 @@ void sg_display_loop() {
 	start_display();			// 画面クリア
 }
 		
-//int64_t scroll_kansei(alarm_id_t id, void *user_data) {
-//	i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, -1);
-//}
-//set_timer(100, scroll_kansei, itmp);
-
 void scroll_function_inner(bool bY, int move) {
 	printf("scroll bY=%d move=%d\n", bY, move);
 	if(bY) {
@@ -1122,6 +1150,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 		}
 		scrt.count++;
 	} else {
+		// スクロール状態で押しっぱなしの時
 		if(scrt.count > 12) {
 			int move = scrt.last > 0 ? 1 : -1;
 			scroll_function_inner(bY, move);
@@ -1344,8 +1373,9 @@ void mouse_display_loop() {
 					// スクロール変数リセット
 					scrt.count = 0;
 					scrt.sum = 0;
+				} else {
+					touch_mode = MODE_NONE;
 				}
-				touch_mode = MODE_NONE;
 			}
 
 			// スクリーンセーバー
@@ -1364,7 +1394,8 @@ void mouse_display_loop() {
 		switch(touch_mode) {
 			case MODE_TOUCHING:
 				lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
-				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
+				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
+				axis_delta = acc_axis_delta(axis_delta);
 				i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur; 
 				break;	
@@ -1419,7 +1450,7 @@ void mouse_display_loop() {
 				axis_touch = axis_0;
 				axis_old   = axis_0;
 				break;	
-			case MODE_NONE:
+			case MODE_TOUCH_RELEASE:
 				if(release_cnt < SG_CLICK_RELEASE_COUNT_LIMIT) {
 					b_drag_prestate = false;
 					// 左クリック
@@ -1433,8 +1464,10 @@ void mouse_display_loop() {
 					axis_old   = axis_0;
 				}
 				break;	
+			case MODE_NONE:
+				break;	
 			default:
-				printf("axis_old clear 1");	
+				printf("axis_old clear 1\n");	
 				axis_old   = axis_0;
 				break;	
 		}
@@ -1442,6 +1475,7 @@ void mouse_display_loop() {
 		// ダブルタップのドラッグ判定
 		if(b_drag_prestate && touch_mode == MODE_TOUCHING && !isNearbyPoint(axis_touch, axis_cur, 1)) {
 			// ドラッグ前段階　かつ　タッチ状態で閾値以上離れた場合
+			printf("tap drag mode\n");	
 			touch_mode = MODE_DRAG;
 		}
 
