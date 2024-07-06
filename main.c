@@ -1271,6 +1271,7 @@ void mouse_display_loop() {
 	axis_t axis_old;				// 一つ前の座標
 	axis_t axis_delta;				// 移動量
 	axis_t axis_touch;				// タッチ開始時の座標
+	axis_t axis_release;				// リリース時の座標
 
 	int touch_mode = 0;				// 操作モード
 	int release_cnt = 0;				// タッチを離してる間のカウント値
@@ -1317,7 +1318,7 @@ void mouse_display_loop() {
 				touch_mode = MODE_TOUCHING;
 
 				// タップによるドラッグ開始判定
-				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_touch, axis_cur, 20)) {
+				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_release, axis_cur, 20)) {
 					printf("double touch drag prestage\r\n");
 					b_drag_prestate = true;
 				}
@@ -1463,6 +1464,7 @@ void mouse_display_loop() {
 					release_cnt = SG_CLICK_RELEASE_COUNT_LIMIT;
 					axis_old   = axis_0;
 				}
+				axis_release = axis_cur;
 				break;	
 			case MODE_NONE:
 				break;	
