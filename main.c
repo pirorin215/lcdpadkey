@@ -1405,10 +1405,10 @@ void mouse_display_loop() {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
-					axis_old = axis_cur;
 				} else {
 					touch_mode = MODE_TOUCHING;
 				}
+				axis_old = axis_cur;
 				break;	
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
@@ -1416,10 +1416,10 @@ void mouse_display_loop() {
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
-					axis_old = axis_cur;
 				} else {
 					touch_mode = MODE_TOUCHING;
 				}
+				axis_old = axis_cur;
 				break;	
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
