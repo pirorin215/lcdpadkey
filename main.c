@@ -1162,7 +1162,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 
 volatile bool g_flag_click = false; // クリック確定の送信判定フラグ
 
-/** クリック確定の通信を送信する処理 **/
+/** クリック確定の送信処理 **/
 int64_t click_commit(alarm_id_t id, void *user_data) {
 	if(g_flag_click) {
 		i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
@@ -1321,7 +1321,7 @@ void mouse_display_loop() {
 				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_release, axis_cur, 20)) {
 					printf("double touch drag prestage\r\n");
 					b_drag_prestate = true;
-					g_flag_click = false; // 直前のクリック確定をキャンセル
+					g_flag_click = false; // クリック確定の送信をキャンセル
 				}
 		
 				// 縦スクロール判定
@@ -1403,7 +1403,7 @@ void mouse_display_loop() {
 				break;	
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
-					g_flag_click = false; // 直前のクリック確定をキャンセル
+					g_flag_click = false; // クリック確定の送信をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
@@ -1414,7 +1414,7 @@ void mouse_display_loop() {
 				break;	
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
-					g_flag_click = false; // 直前のクリック確定をキャンセル
+					g_flag_click = false; // クリック確定の送信をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 					last_touch_time = time_us_32();	// 最後に触った時刻
