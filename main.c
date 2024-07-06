@@ -1321,6 +1321,7 @@ void mouse_display_loop() {
 				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_release, axis_cur, 20)) {
 					printf("double touch drag prestage\r\n");
 					b_drag_prestate = true;
+					g_flag_click = false; // 直前のクリック確定をキャンセル
 				}
 		
 				// 縦スクロール判定
@@ -1425,8 +1426,6 @@ void mouse_display_loop() {
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
 				b_drag_prestate = false;
-
-				g_flag_click = false; // 直前のクリック確定をキャンセル
 
 				lcd_bg_color = COLOR_DRAG;
 				trigger_vibration(150);
