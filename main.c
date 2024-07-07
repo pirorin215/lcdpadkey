@@ -1167,6 +1167,8 @@ int64_t click_commit(alarm_id_t id, void *user_data) {
 	if(g_flag_click) {
 		i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
 		g_flag_click = false;
+	} else {
+		printf("click_commit cancel\r\n");
 	}
 
     	return 0;
@@ -1426,6 +1428,8 @@ void mouse_display_loop() {
 			case MODE_DRAG:
 				lcd_text_set(3, lcd_bg_color, true, "DRAG");
 				b_drag_prestate = false;
+				
+				g_flag_click = false; // クリック確定の送信をキャンセル
 
 				lcd_bg_color = COLOR_DRAG;
 				trigger_vibration(150);
@@ -1476,7 +1480,7 @@ void mouse_display_loop() {
 		// ダブルタップのドラッグ判定
 		if(b_drag_prestate && touch_mode == MODE_TOUCHING && !isNearbyPoint(axis_touch, axis_cur, 1)) {
 			// ドラッグ前段階　かつ　タッチ状態で閾値以上離れた場合
-			printf("tap drag mode\n");	
+			printf("tap drag mode\n");
 			touch_mode = MODE_DRAG;
 		}
 
