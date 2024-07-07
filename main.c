@@ -1280,7 +1280,6 @@ void mouse_display_loop() {
 	int click_stat_old = NONE_CLICK;		// クリック状態の一つ前の状態
 	uint16_t lcd_bg_color = BLACK;			// LCD背景色
 	uint32_t last_touch_time = time_us_32();	// 最後に触った時刻
-	uint32_t release_time = time_us_32();		// 最後に離した時刻
 
 	bool b_drag_prestate = false;			// ドラッグ開始前のクリック状態
 
@@ -1320,7 +1319,7 @@ void mouse_display_loop() {
 				touch_mode = MODE_TOUCHING;
 
 				// タップによるドラッグ開始判定
-				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - release_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_release, axis_cur, 20)) {
+				if(g_sg_data[SG_TAP_DRAG] && (time_us_32() - last_touch_time)/MS < DRAG_START_MSEC && isNearbyPoint(axis_release, axis_cur, 20)) {
 					printf("double touch drag prestage\r\n");
 					b_drag_prestate = true;
 					g_flag_click = false; // クリック確定の送信をキャンセル
@@ -1372,8 +1371,6 @@ void mouse_display_loop() {
 					touch_mode = MODE_TOUCH_RELEASE;
 					axis_old   = axis_0;
 	
-					release_time = time_us_32();
-
 					// スクロール変数リセット
 					scrt.count = 0;
 					scrt.sum = 0;
