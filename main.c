@@ -72,6 +72,8 @@ typedef struct {
 } LOSA_t;
 
 // i2c通信用
+#define I2C_BUFFER_SIZE 10  // リングバッファのサイズ
+
 typedef struct {
 	uint8_t click;
 	int8_t pointer_x;
@@ -79,6 +81,15 @@ typedef struct {
 	int8_t wheel_h;
 	int8_t wheel_v;
 } simple_pointer_data_t;
+
+typedef struct {
+    simple_pointer_data_t buffer[I2C_BUFFER_SIZE];
+    int head;
+    int tail;
+    int count;
+} ring_buffer_t;
+
+volatile ring_buffer_t i2c_ring_buffer = {0};
 
 // 座標構造体
 typedef struct {
@@ -101,14 +112,14 @@ typedef struct {
 }sg_trigger_t;
 
 // I2C通信
-typedef enum {
-	NONE_CLICK,     // 0x00
-	L_CLICK,     // 0x01
-	R_CLICK,    // 0x02
-	MIDDLE_CLICK,   // 0x03
-	CMD_POINTER,    // 0x04
-	NOCHANGE_CLICK, // 0x05
-} CLICK_I2C;
+
+#define LCDPADKEY_NONE_CLICK   0
+#define LCDPADKEY_CLICK_LEFT   1
+#define LCDPADKEY_CLICK_RIGHT  1 << 1
+#define LCDPADKEY_CLICK_MIDDLE 1 << 2
+#define LCDPADKEY_NOCHANGE     1 << 3
+#define LCDPADKEY_IGNORE       1 << 4
+#define LCDPADKEY_READ_REG     1 << 5
 
 // タッチ操作状態
 typedef enum {
@@ -188,7 +199,6 @@ uint32_t rebootcounter = 0;
 uint32_t button0_time=0;
 
 volatile uint8_t flag_event = 0;
-volatile simple_pointer_data_t i2c_buf = {0};
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 240
@@ -425,24 +435,23 @@ void lcd_text_set(int row, uint16_t lcd_color, bool b_console, const char *forma
 }
 
 void send_pointer() {
-//	printf("send click=%d x=%d y=%d", i2c_buf.click, i2c_buf.pointer_x, i2c_buf.pointer_y);
+	volatile simple_pointer_data_t* i2c_tmp = &i2c_ring_buffer.buffer[i2c_ring_buffer.tail];
 
-	int n = 0;
-	int i;
-	uint8_t *raw_buf = (uint8_t *)&i2c_buf;
-
-	i2c_write_blocking(i2c0, LCD_ADDR, &raw_buf[0], 1, true); 
-	for (i = 1; i < 5; i++) {
-		i2c_write_blocking(i2c0, LCD_ADDR, &raw_buf[i], 1, true); 
-		raw_buf[i] = 0;
+	uint8_t *raw_buf = (uint8_t *)i2c_tmp;
+	i2c_write_blocking(i2c0, LCD_ADDR, &raw_buf[0], 1, true);
+	for (int i = 1; i < 5; i++) {
+		i2c_write_blocking(i2c0, LCD_ADDR, &raw_buf[i], 1, true);
 	}
+	
+	i2c_ring_buffer.tail = (i2c_ring_buffer.tail + 1) % I2C_BUFFER_SIZE;
+	i2c_ring_buffer.count--;
 }
 
 void recv_event(i2c_inst_t *i2c) {
 	uint8_t cmd = i2c_read_byte_raw(i2c);
 	
 	switch(cmd) {
-		case CMD_POINTER:
+		case LCDPADKEY_READ_REG:
 			flag_event=1;
 			break;
 	}
@@ -454,10 +463,21 @@ void recv_event(i2c_inst_t *i2c) {
 	}
 }
 
+static simple_pointer_data_t i2c_buf_ignore = {0}; // I2Cの無視応答用
+
 void send_event() {
 	if(flag_event) {
-		send_pointer();
 		flag_event = 0;
+		if (i2c_ring_buffer.count == 0) {
+			// バッファが空の場合は無視データを応答
+			i2c_buf_ignore.click = LCDPADKEY_IGNORE;
+			uint8_t *raw_buf_tmp = (uint8_t *)&i2c_buf_ignore;
+			for (int i = 0; i < 5; i++) {
+				i2c_write_blocking(i2c0, LCD_ADDR, &raw_buf_tmp[i], 1, true);
+			}
+			return;
+		}
+		send_pointer();
 	}
 }
 
@@ -476,6 +496,30 @@ static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
 	}
 }
 
+void i2c_data_set(uint8_t click, int x, int y, int h, int v) {
+	if(click == LCDPADKEY_NOCHANGE && x == 0 && y == 0 && h == 0 && v == 0) {
+		return;
+	}
+
+	if (i2c_ring_buffer.count == I2C_BUFFER_SIZE) {
+	    // バッファが満杯の場合、最も古いデータを上書き
+	    i2c_ring_buffer.tail = (i2c_ring_buffer.tail + 1) % I2C_BUFFER_SIZE;
+	} else {
+	    i2c_ring_buffer.count++;
+	}
+	
+	volatile simple_pointer_data_t* i2c_tmp = &i2c_ring_buffer.buffer[i2c_ring_buffer.head];
+	i2c_tmp->click = click;
+	i2c_tmp->pointer_x = x;
+	i2c_tmp->pointer_y = y;
+	i2c_tmp->wheel_h = h;
+	i2c_tmp->wheel_v = v;
+	
+	printf("i2c_data_set click=%u i2c_tmp->click=%u x:%d y:%d h:%d v:%d\r\n", click, i2c_tmp->click, x, y, h, v);
+	
+	i2c_ring_buffer.head = (i2c_ring_buffer.head + 1) % I2C_BUFFER_SIZE;
+	flag_event = 1;
+}
 
 /** lcd_circle の範囲ガード **/
 void lcd_circle_guard(uint16_t x, uint16_t y, uint16_t radius, uint16_t color, uint16_t ps, bool fill) {
@@ -627,16 +671,6 @@ void init() {
     	QMI8658_enableWakeOnMotion();
 	QMI8658_init();sleep_ms(2500);printf("init done\n");
 #endif
-}
-
-void i2c_data_set(int click, int x, int y, int h, int v) {
-	flag_event = 1;
-	i2c_buf.click = click == NOCHANGE_CLICK ? i2c_buf.click : click;
-	printf("i2c_data_set i2c_buf.click=%d x:%d y:%d h:%d v:%d\r\n", i2c_buf.click, x, y, h, v);
-	i2c_buf.pointer_x = x;
-	i2c_buf.pointer_y = y;
-	i2c_buf.wheel_h = h;
-	i2c_buf.wheel_v = v;
 }
 
 /** ジャイロセンサ用 **/
@@ -1107,9 +1141,9 @@ void sg_display_loop() {
 void scroll_function_inner(bool bY, int move) {
 	printf("scroll bY=%d move=%d\n", bY, move);
 	if(bY) {
-		i2c_data_set(NOCHANGE_CLICK, 0, 0, 0, move);
+		i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, 0, move);
 	} else {
-		i2c_data_set(NOCHANGE_CLICK, 0, 0, move, 0);
+		i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, move, 0);
 	}
 }
 
@@ -1165,7 +1199,7 @@ volatile bool g_flag_click = false; // クリック確定の送信判定フラ�
 /** クリック確定の送信処理 **/
 int64_t click_commit(alarm_id_t id, void *user_data) {
 	if(g_flag_click) {
-		i2c_data_set(NONE_CLICK, 0, 0, 0, 0);
+		i2c_data_set(LCDPADKEY_NONE_CLICK, 0, 0, 0, 0);
 		g_flag_click = false;
 	} else {
 		printf("click_commit cancel\r\n");
@@ -1192,13 +1226,13 @@ axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
 	if(g_sg_data[SG_GYRO] > 0) {
 		// ジャイロでポインタ操作
 		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-			i2c_data_set(NOCHANGE_CLICK, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
+			i2c_data_set(LCDPADKEY_NOCHANGE, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
 		}
 	} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
 		// ジャイロでスクロール
 		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
 			printf("gyro scroll\n");
-			i2c_data_set(NOCHANGE_CLICK, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
+			i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
 		}
 	}
 
@@ -1277,8 +1311,8 @@ void mouse_display_loop() {
 
 	int touch_mode = 0;				// 操作モード
 	int release_cnt = 0;				// タッチを離してる間のカウント値
-	int click_stat_old = NONE_CLICK;		// クリック状態の一つ前の状態
 	uint16_t lcd_bg_color = BLACK;			// LCD背景色
+	uint16_t lcd_bg_color_old = BLACK;		// LCD背景色前状態
 	uint32_t last_touch_time = time_us_32();	// 最後に触った時刻
 
 	bool b_drag_prestate = false;			// ドラッグ開始前のクリック状態
@@ -1294,12 +1328,10 @@ void mouse_display_loop() {
 	printf("loop start !!\r\n");
 	
 	while(true){
-		// クリック状態が変わったら背景色を設定(画面クリア）
-		if(i2c_buf.click != click_stat_old) {
-			printf("lcd_bg_color change=%d i2c_buf.click=%d click_stat_old=%d\r\n", lcd_bg_color, i2c_buf.click, click_stat_old);
-			lcd_clr(lcd_bg_color);
+		if(lcd_bg_color != lcd_bg_color_old) {
+		        lcd_clr(lcd_bg_color); // 背景色変更
 		}
-		click_stat_old = i2c_buf.click;
+		lcd_bg_color_old = lcd_bg_color;
 
 		// タッチが行われた場合
 		if(flag_touch){
@@ -1397,7 +1429,7 @@ void mouse_display_loop() {
 				lcd_text_set(3, lcd_bg_color, false, "TOUCHING");
 				axis_delta = get_axis_delta(axis_cur, axis_old, 1);
 				axis_delta = acc_axis_delta(axis_delta);
-				i2c_data_set(NOCHANGE_CLICK, axis_delta.x, axis_delta.y, 0, 0);
+				i2c_data_set(LCDPADKEY_NOCHANGE, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur; 
 				break;	
 			case MODE_SCROLL_Y:
@@ -1432,7 +1464,7 @@ void mouse_display_loop() {
 				trigger_vibration(150);
 
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.7);
-				i2c_data_set(L_CLICK, axis_delta.x, axis_delta.y, 0, 0);
+				i2c_data_set(LCDPADKEY_CLICK_LEFT, axis_delta.x, axis_delta.y, 0, 0);
 				axis_old = axis_cur;
 				
 				touch_mode = MODE_TOUCHING;
@@ -1444,7 +1476,7 @@ void mouse_display_loop() {
 				
 				trigger_vibration(120);
 				
-				i2c_data_set(R_CLICK, 0, 0, 0, 0);
+				i2c_data_set(LCDPADKEY_CLICK_RIGHT, 0, 0, 0, 0);
 				click_commit_timer(DRAG_START_MSEC+10);
 
 				touch_mode = MODE_NONE;
@@ -1459,7 +1491,7 @@ void mouse_display_loop() {
 
 					lcd_bg_color = BLACK;	
 			
-					i2c_data_set(L_CLICK, 0, 0, 0, 0);
+					i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
 					click_commit_timer(DRAG_START_MSEC+10);
 					release_cnt = SG_CLICK_RELEASE_COUNT_LIMIT;
 					axis_old   = axis_0;
