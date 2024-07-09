@@ -559,12 +559,14 @@ int64_t stop_vibration_callback(alarm_id_t id, void *user_data) {
 void trigger_vibration(int timer) {
 	if (g_sg_data[SG_VIBRATION] >= 1) {
 		if (!vibration_active) {
-		    int strength = 1; // 固定
-		    vibration_on(strength);
-		    vibration_active = true;
-		    
-		    int *itmp;
-		    set_timer(timer, stop_vibration_callback, itmp);
+			int strength = 1; // 固定
+			vibration_on(strength);
+			vibration_active = true;
+			
+			int *itmp;
+			timer = timer + 80 * g_sg_data[SG_VIBRATION];
+			    
+			set_timer(timer, stop_vibration_callback, itmp);
 		}
 	}
 }
@@ -697,7 +699,7 @@ int16_t get_acc1(){return get_acc12(acc[0]*1.5f,acc[1]*1.5f);}
 /************************************/
 
 /** 画面方向に合わせてX,Y座標を補正して取得 **/
-axis_t axis_rotate() {
+axis_t get_point() {
 	CST816S_Get_Point(); // 座標を取得
 	axis_t axis_cur;
 	axis_cur.x = (int16_t)Touch_CTS816.x_point;
@@ -966,6 +968,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			break;
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
+		case SG_VIBRATION:
 			max=3;
 			break;
 		case SG_ACC_LIMIT:
@@ -975,7 +978,6 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			max=10;
 			break;
 		case SG_TAP_DRAG:
-		case SG_VIBRATION:
 		case SG_GAME:
 		case SG_SCROLL_Y_REV:
 		case SG_SCROLL_X_REV:
@@ -1092,7 +1094,7 @@ void sg_display_loop() {
 
 		// タッチが行われた場合
 		if(flag_touch){
-			axis_cur = axis_rotate(); // 画面方向に合わせてX,Y座標を補正して取得
+			axis_cur = get_point(); // 画面方向に合わせてX,Y座標を補正して取得
 		
 			// タッチをしはじめた時
 			if( ((time_us_32()-last_touch_time)/MS) > TOUCH_START_MSEC_LIMIT){
@@ -1173,7 +1175,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 		if(scrt.count % 3 == 0) {
 			int move = ceil(scrt.sum / 3);
 			scroll_function_inner(bY, move);
-			trigger_vibration(60 + abs(scrt.sum) * 3);
+			trigger_vibration(15 + abs(scrt.sum) * 2);
 
 			if(abs(scrt.sum) > 0) {
 				scrt.last= scrt.sum;
@@ -1188,7 +1190,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 		if(scrt.count > 12) {
 			int move = scrt.last > 0 ? 1 : -1;
 			scroll_function_inner(bY, move);
-			trigger_vibration(41);
+			trigger_vibration(20);
 		}
 	}
 	return scrt;
@@ -1251,7 +1253,7 @@ axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
 		if(gyroX == 0 && gyroY ==0) {
 			// 中央の場合
 			if(g_sg_data[SG_GAME] == 1) {
-				trigger_vibration(300);
+				trigger_vibration(100);
 				center_point_flash(10);
 			}
 		} else {
@@ -1327,6 +1329,8 @@ void mouse_display_loop() {
 	axis_t axis_gyro_old;				// 以前の傾き
 
 	printf("loop start !!\r\n");
+
+	trigger_vibration(200);
 	
 	while(true){
 		if(lcd_bg_color != lcd_bg_color_old) {
@@ -1337,7 +1341,7 @@ void mouse_display_loop() {
 		// タッチが行われた場合
 		if(flag_touch){
 			screenSaverOff();	
-			axis_cur = axis_rotate(); // 画面方向に合わせてX,Y座標を補正して取得
+			axis_cur = get_point(); // 画面方向に合わせてX,Y座標を補正して取得
 
 			lcd_circle_guard(axis_cur.x, axis_cur.y, 3, GREEN, 1, false); // 軌跡を表示
 			lcd_text_set(1, lcd_bg_color, true, "X:%03d Y:%03d", axis_cur.x, axis_cur.y); // 座標表示
@@ -1474,7 +1478,7 @@ void mouse_display_loop() {
 				lcd_text_set(3, lcd_bg_color, true, "R CLICK");
 				lcd_bg_color = BLACK;
 				
-				trigger_vibration(120);
+				trigger_vibration(70);
 				
 				i2c_data_set(LCDPADKEY_CLICK_RIGHT, 0, 0, 0, 0);
 				click_commit_timer(DRAG_LIMIT_MSEC+10);
@@ -1489,7 +1493,7 @@ void mouse_display_loop() {
 				g_flag_click = false;	// クリック確定の送信キャンセル
 
 				lcd_bg_color = COLOR_DRAG;
-				trigger_vibration(120);
+				trigger_vibration(70);
 
 				i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
 				axis_old = axis_cur;
