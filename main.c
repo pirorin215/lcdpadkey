@@ -321,6 +321,7 @@ void gpio_callback(uint gpio, uint32_t events) {
 		if(gpio==Touch_INT_PIN){
 			deepsleep=false;
 			flag_touch = 1;
+			//printf("gpio_callback flag_touch=%d\r\n", flag_touch);
 		}
 	}
 
@@ -1102,38 +1103,50 @@ void sg_display_loop() {
 		if(flag_touch){
 			axis_cur = get_point(); // 画面方向に合わせてX,Y座標を補正して取得
 		
-			// タッチをしはじめた時
-			if( ((time_us_32()-last_touch_time)/MS) > TOUCH_START_MSEC_LIMIT){
-				printf("TOUCH START\r\n");
-				touch_mode = MODE_TOUCHING;
-				renzoku_time = time_us_32();
-			} else {
+			if(touch_mode != MODE_TOUCH_RELEASE) {
 				if( ((time_us_32()-renzoku_time)/MS) > RENZOKU_TOUCH_MSEC_LIMIT){
-					touch_mode = MODE_TOUCHING;
-				} else {
-					touch_mode = MODE_NONE;
+					// 連続押し
+					printf("renzoku mode renzoku_time=%d\r\n", renzoku_time);
+					touch_mode = MODE_TOUCH_RELEASE;
 				}
 			}
+			
+			if(touch_mode == MODE_NONE) {
+				if( ((time_us_32()-last_touch_time)/MS) > TOUCH_START_MSEC_LIMIT){
+					// タッチをしはじめた時
+					printf("TOUCH START\r\n");
+					touch_mode = MODE_TOUCHING;
+					renzoku_time = time_us_32();
+				}
+			}
+
 			last_touch_time = time_us_32();
+			printf("touch flag_touch=%d, last_touch_time=%d\r\n", flag_touch, last_touch_time);
 			flag_touch = 0;
 		} else {
-			touch_mode = MODE_NONE;
-			renzoku_time = time_us_32();
+			// 連続押しキャンセル
+			renzoku_time = time_us_32() + RENZOKU_TOUCH_MSEC_LIMIT;
+			if(touch_mode == MODE_TOUCHING) {
+				// 指を離した場合
+				touch_mode = MODE_TOUCH_RELEASE;
+				printf("TOUCH RELEASE touch_mode=%d\r\n", touch_mode);
+			}
 		}
 
 		// 各種操作
 		bool b_op = false; // 操作したかどうかフラグ
-		if(touch_mode == MODE_TOUCHING) {
+		if(touch_mode == MODE_TOUCH_RELEASE) {
+			printf("touch_mode=%d\r\n", touch_mode);
 			b_op = sg_operation(&sg_no, axis_cur);
 			if(sg_no == SG_NUM) {
 				// ループ終了
 				break;
 			}
 			if(sg_no == SG_EXIT) {
-				// EXITなら一旦連続押しをやめる
+				// EXIT画面は連続押しキャンセル
 				renzoku_time = time_us_32() + RENZOKU_TOUCH_MSEC_LIMIT;
-				touch_mode == MODE_NONE;
 			}
+			touch_mode = MODE_NONE;
 		}
 		if(b_op) {
 			lcd_sg_draw(sg_no);
@@ -1448,6 +1461,7 @@ void mouse_display_loop() {
 					last_release_time = time_us_32();
 
 					if(isNearbyPoint(axis_touch_start, axis_cur, 3)) {
+						lcd_text_set(3, lcd_bg_color, true, "TOUCH RELEASE");
 						i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
 						click_commit_timer(DRAG_LIMIT_MSEC+40);
 						axis_old   = axis_0;
@@ -1455,7 +1469,6 @@ void mouse_display_loop() {
 						lcd_bg_color = BLACK;
 					}
 				}
-		axis_old   = axis_0;
 				touch_mode = MODE_NONE;
 				break;
 
@@ -1500,6 +1513,7 @@ void mouse_display_loop() {
 			case MODE_DRAG:
 				printf("MODE_DRAG\r\n");
 				g_flag_click = false;	// クリック確定の送信キャンセル
+				lcd_text_set(3, lcd_bg_color, true, "DRAG MODE");
 
 				lcd_bg_color = COLOR_DRAG;
 				trigger_vibration(70);
