@@ -498,6 +498,14 @@ static void i2c_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
 	}
 }
 
+int8_t get_int8_t(int a) {
+
+	a =  127 < a ?  127 : a;
+	a = -127 > a ? -127 : a;
+
+	return (int8_t)a;
+}
+
 void i2c_data_set(uint8_t click, int x, int y, int h, int v) {
 	if(click == LCDPADKEY_NOCHANGE && x == 0 && y == 0 && h == 0 && v == 0) {
 		return;
@@ -511,11 +519,12 @@ void i2c_data_set(uint8_t click, int x, int y, int h, int v) {
 	}
 	
 	volatile simple_pointer_data_t* i2c_tmp = &i2c_ring_buffer.buffer[i2c_ring_buffer.head];
+
 	i2c_tmp->click = click;
-	i2c_tmp->pointer_x = x;
-	i2c_tmp->pointer_y = y;
-	i2c_tmp->wheel_h = h;
-	i2c_tmp->wheel_v = v;
+	i2c_tmp->pointer_x = get_int8_t(x);
+	i2c_tmp->pointer_y = get_int8_t(y);
+	i2c_tmp->wheel_h   = get_int8_t(h);
+	i2c_tmp->wheel_v   = get_int8_t(v);
 	
 	printf("i2c_data_set click=%u i2c_tmp->click=%u x:%d y:%d h:%d v:%d\r\n", click, i2c_tmp->click, x, y, h, v);
 	
