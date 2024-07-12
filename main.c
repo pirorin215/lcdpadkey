@@ -724,7 +724,11 @@ axis_t get_point() {
 	return axis_cur;
 }
 
-/** 押しはじめ判定 **/
+int abs_value(int a, int b) {
+	return abs(abs(a) - abs(b));
+}
+
+/** 押し位置の範囲判定 **/
 bool isRangePress(axis_t axis_cur, int dir, int len) {
 	bool bInRange = false;
 	switch(dir) {
@@ -742,14 +746,10 @@ bool isRangePress(axis_t axis_cur, int dir, int len) {
 			break;
 	}
 	if(bInRange) {
-		printf("range press dir=%d len=%d\r\n", dir, len);
+		//printf("range press dir=%d len=%d\r\n", dir, len);
 		return true;
 	}
 	return false;
-}
-
-int abs_value(int a, int b) {
-	return abs(abs(a) - abs(b));
 }
 
 /** 前回と近い場所をタッチ判定 **/
@@ -1383,7 +1383,7 @@ void mouse_display_loop() {
 					touch_mode = MODE_SCROLL_X;
 				}
 				
-				lcd_clr(lcd_bg_color);
+				lcd_clr(lcd_bg_color); // 画面クリア
 				last_touch_start_time = time_us_32();
 				axis_touch_start = axis_cur;
 				tap_drag_state++;
