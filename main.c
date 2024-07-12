@@ -243,6 +243,7 @@ const uint16_t COLOR_SCROLL_X = GREEN;
 
 #define CHECK_NUMBER_SG 123
 #define VIBRATION_PIN 18
+#define SETTING_PIN 26
 
 // 設定画面の設定値のフレーム
 int SG_FRAME_VALUE[4] = {88, 137, 88 + 100,  137 + 25};
@@ -615,6 +616,11 @@ void init() {
 	gpio_init(VIBRATION_PIN);
         gpio_set_dir(VIBRATION_PIN, GPIO_OUT);
         gpio_put(VIBRATION_PIN, 0);
+
+	// 設定ボタン用PIN
+	gpio_init(SETTING_PIN);
+	gpio_set_dir(SETTING_PIN, GPIO_IN);
+	gpio_pull_up(SETTING_PIN);
 	
 	// I2C Master(LCDとの通信）
 	i2c_init(I2C_PORT, 100 * 1000);
@@ -1286,8 +1292,6 @@ sg_trigger_t sg_trigger_function(sg_trigger_t sg_trigger, axis_t axis_cur, uint1
 	} else if(sg_trigger.cnt == 3 && axis_cur.x > TRIGGER_SG_RIGHT) {
 		printf("sg_trigger.cnt=%d\r\n", sg_trigger.cnt);
 		if(b_sg_trigger_time) {
-			lcd_text_set(3, lcd_bg_color, true, "SG START");
-			sg_display_loop(); // 設定画面呼び出し
 			sg_trigger.cnt=0;
 		}
 	}
@@ -1337,6 +1341,10 @@ void mouse_display_loop() {
 			lcd_clr(lcd_bg_color); // 背景色変更
 		}
 		lcd_bg_color_old = lcd_bg_color;
+
+		if(!gpio_get(SETTING_PIN)) {
+			sg_display_loop();
+		}
 
 		// タッチが行われた場合
 		if(flag_touch){
@@ -1447,6 +1455,7 @@ void mouse_display_loop() {
 						lcd_bg_color = BLACK;
 					}
 				}
+		axis_old   = axis_0;
 				touch_mode = MODE_NONE;
 				break;
 
