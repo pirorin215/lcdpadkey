@@ -139,6 +139,9 @@ typedef enum {
 // 設定項目のリスト
 typedef enum {
 	SG_SLEEP,
+	SG_SPEED,
+	SG_ACC_LIMIT,
+	SG_ACC_SPEED,
 	SG_DRUG_DIR,
 	SG_DRUG_LEN,
 	SG_R_CLICK_DIR,
@@ -151,8 +154,6 @@ typedef enum {
 	SG_SCROLL_X_REV,
 	SG_TITLE_SPEED,
 	SG_TAP_DRAG,
-	SG_ACC_LIMIT,
-	SG_ACC_RATE,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
 	SG_VIBRATION,
@@ -265,6 +266,9 @@ unsigned int tim_count = 0;	// ジャイロセンサ
 /** フラッシュデータの初期化 **/
 void init_sg(void) {
 	g_sg_data[SG_SLEEP]		= 4;
+	g_sg_data[SG_SPEED]		= 2;
+	g_sg_data[SG_ACC_LIMIT]		= 12;
+	g_sg_data[SG_ACC_SPEED]		= 5;
 	g_sg_data[SG_TITLE_SPEED]	= 4;
 	g_sg_data[SG_DRUG_DIR]		= DIR_TOP;
 	g_sg_data[SG_DRUG_LEN]		= 55;
@@ -276,8 +280,6 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_SCROLL_X_REV]	= 0;
-	g_sg_data[SG_ACC_LIMIT]		= 12;
-	g_sg_data[SG_ACC_RATE]		= 1;
 	g_sg_data[SG_TAP_DRAG]		= 1;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
@@ -815,9 +817,9 @@ axis_t acc_axis_delta(axis_t axis_delta) {
 
 	double acc = 1;
 	if(delta_value < g_sg_data[SG_ACC_LIMIT]) {
-		acc = 1;
+		acc = g_sg_data[SG_SPEED];
 	} else {
-		acc = g_sg_data[SG_ACC_RATE];
+		acc = g_sg_data[SG_ACC_SPEED];
 	}
 	//printf("delta_value=%.1f acc=%.1f\n", delta_value, acc);
 
@@ -842,6 +844,9 @@ char *get_sg_itemname(int sg_no) {
 	// 設定項目タイトル
 	switch(sg_no) {
 		case SG_SLEEP:		snprintf(tmps, sz, "%02d:SLEEP", sg_no); break;
+		case SG_SPEED:		snprintf(tmps, sz, "%02d:SPEED", sg_no); break;
+		case SG_ACC_LIMIT:	snprintf(tmps, sz, "%02d:ACC LIMIT", sg_no); break;
+		case SG_ACC_SPEED:	snprintf(tmps, sz, "%02d:ACC SPEED", sg_no); break;
 		case SG_DRUG_DIR:	snprintf(tmps, sz, "%02d:DRUG DIR", sg_no); break;
 		case SG_DRUG_LEN:	snprintf(tmps, sz, "%02d:DRUG LEN", sg_no); break;
 		case SG_R_CLICK_DIR:	snprintf(tmps, sz, "%02d:R CLICK DIR", sg_no); break;
@@ -853,8 +858,6 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
-		case SG_ACC_LIMIT:	snprintf(tmps, sz, "%02d:ACC LIMIT", sg_no); break;
-		case SG_ACC_RATE:	snprintf(tmps, sz, "%02d:ACC RATE", sg_no); break;
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
@@ -896,13 +899,12 @@ void lcd_sg_draw(int sg_no) {
 
 	switch(sg_no) {
 		case SG_SLEEP:
+		case SG_ACC_LIMIT:
 		case SG_TITLE_SPEED:
 		case SG_TAP_DRAG:
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 		case SG_VIBRATION:
-		case SG_ACC_LIMIT:
-		case SG_ACC_RATE:
 		case SG_GAME:
 			if(g_sg_data[sg_no] == 0) {
 				strcat(tmps, "OFF");
@@ -988,9 +990,10 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			max=3;
 			break;
 		case SG_ACC_LIMIT:
-			max=20;
+			max=12;
 			break;
-		case SG_ACC_RATE:
+		case SG_SPEED:
+		case SG_ACC_SPEED:
 			max=10;
 			break;
 		case SG_TAP_DRAG:
