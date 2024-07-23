@@ -821,6 +821,9 @@ axis_t acc_axis_delta(axis_t axis_delta) {
 	} else {
 		acc = g_sg_data[SG_ACC_SPEED];
 	}
+
+	//acc = ceil(delta_value / 3);
+
 	//printf("delta_value=%.1f acc=%.1f\n", delta_value, acc);
 
 	axis_delta.x = ceil(axis_delta.x * acc);
@@ -1325,7 +1328,7 @@ sg_trigger_t sg_trigger_function(sg_trigger_t sg_trigger, axis_t axis_cur, uint1
 	if(!b_sg_trigger_time) {
 		// 設定操作開始状態クリア
 		lcd_text_set(3, lcd_bg_color, false,"");
-		printf("sg_trigger clear!!\r\n");
+		//printf("sg_trigger clear!!\r\n");
 		sg_trigger.cnt = 0;
 		sg_trigger.time = time_us_32();
 	}
@@ -1348,6 +1351,8 @@ void mouse_display_loop() {
 	uint32_t last_release_time = time_us_32();	// 最後に離した時刻
 
 	int tap_drag_state = 0;				// タップドラッグ開始前状態
+
+	bool b_scroll_after = false;			// スクロール直後状態
 
 	sg_trigger_t sg_trigger;
 	sg_trigger.time = time_us_32();
@@ -1378,11 +1383,18 @@ void mouse_display_loop() {
 
 			lcd_circle_guard(axis_cur.x, axis_cur.y, 3, GREEN, 1, false); // 軌跡を表示
 			lcd_text_set(1, lcd_bg_color, true, "X:%03d Y:%03d", axis_cur.x, axis_cur.y); // 座標表示
+				
+			printf("(time_us_32()-last_touch_time)/MS=%d\r\n", (time_us_32()-last_touch_time)/MS);
 
 			// タッチをしはじめた時
 			if( ((time_us_32()-last_touch_time)/MS) > TOUCH_START_MSEC_LIMIT){
 				printf("TOUCH START\r\n");
 				touch_mode = MODE_TOUCHING;
+
+				if(b_scroll_after) {
+					b_scroll_after = false;
+					axis_old = axis_0;
+				}
 				// 縦スクロール判定
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
 					printf("start scroll y\r\n");
@@ -1486,26 +1498,24 @@ void mouse_display_loop() {
 
 			case MODE_SCROLL_Y:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
-					g_flag_click = false; // クリック確定の送信をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
-					last_touch_time = time_us_32();	// 最後に触った時刻
 				} else {
 					touch_mode = MODE_TOUCHING;
 				}
 				axis_old = axis_cur;
+				b_scroll_after = true;
 				break;
 
 			case MODE_SCROLL_X:
 				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
-					g_flag_click = false; // クリック確定の送信をキャンセル
 					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
 					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
-					last_touch_time = time_us_32();	// 最後に触った時刻
 				} else {
 					touch_mode = MODE_TOUCHING;
 				}
 				axis_old = axis_cur;
+				b_scroll_after = true;
 				break;
 
 			case MODE_R_CLICK:
