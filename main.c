@@ -1174,9 +1174,9 @@ void sg_display_loop() {
 	start_display();			// 画面クリア
 }
 		
-void scroll_function_inner(bool bY, int move) {
-	printf("scroll bY=%d move=%d\n", bY, move);
-	if(bY) {
+void scroll_function_inner(int touch_mode, int move) {
+	printf("scroll move=%d\n", move);
+	if(touch_mode == MODE_SCROLL_Y) {
 		i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, 0, move);
 	} else {
 		i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, move, 0);
@@ -1184,10 +1184,10 @@ void scroll_function_inner(bool bY, int move) {
 }
 
 /** スクロール処理 **/
-scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_bg_color) {
+scroll_t scroll_function(int touch_mode, axis_t axis_delta, scroll_t scrt, int16_t lcd_bg_color) {
 
 	int delta = 0;
-	if(bY) {
+	if(touch_mode == MODE_SCROLL_Y) {
 		if(g_sg_data[SG_SCROLL_Y_DIR] == DIR_LEFT || g_sg_data[SG_SCROLL_Y_DIR] == DIR_RIGHT ){
  			delta = -axis_delta.y;
 		} else {
@@ -1204,11 +1204,11 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 	}
 
 	if(abs(delta) >= 1) {
-		lcd_text_set(3, lcd_bg_color, true, "SCROLL %s:%d", bY ? "Y": "X", delta);
+		lcd_text_set(3, lcd_bg_color, true, "SCROLL %s:%d", touch_mode == MODE_SCROLL_Y ? "Y": "X", delta);
 
 		if(scrt.count % 3 == 0) {
 			int move = ceil(scrt.sum / 3);
-			scroll_function_inner(bY, move);
+			scroll_function_inner(touch_mode, move);
 			trigger_vibration(15 + abs(scrt.sum) * 2);
 
 			if(abs(scrt.sum) > 0) {
@@ -1223,7 +1223,7 @@ scroll_t scroll_function(bool bY, axis_t axis_delta, scroll_t scrt, int16_t lcd_
 		// スクロール状態で押しっぱなしの時
 		if(scrt.count > 12) {
 			int move = scrt.last > 0 ? 1 : -1;
-			scroll_function_inner(bY, move);
+			scroll_function_inner(touch_mode, move);
 			trigger_vibration(20);
 		}
 	}
@@ -1497,15 +1497,9 @@ void mouse_display_loop() {
 				break;
 
 			case MODE_SCROLL_Y:
-				axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-				scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
-				axis_old = axis_cur;
-				b_scroll_after = true;
-				break;
-
 			case MODE_SCROLL_X:
 				axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-				scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
+				scrt =  scroll_function(touch_mode, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 				axis_old = axis_cur;
 				b_scroll_after = true;
 				break;
