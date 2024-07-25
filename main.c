@@ -1433,14 +1433,13 @@ void mouse_display_loop() {
 			last_touch_time = time_us_32();
 			flag_touch = 0;
 		} else {
-			if(touch_mode == MODE_TOUCHING) {
+			if(touch_mode == MODE_TOUCHING || touch_mode == MODE_SCROLL_X || touch_mode == MODE_SCROLL_Y) {
 				printf("TOUCH RELEASE\r\n");
 				touch_mode = MODE_TOUCH_RELEASE;
-			} else {
-				// スクロール変数リセット
-				scrt.count = 0;
-				scrt.sum = 0;
 			}
+			// スクロール変数リセット
+			scrt.count = 0;
+			scrt.sum = 0;
 
 			// スクリーンセーバー
 			if(g_sg_data[SG_SLEEP]) {
@@ -1497,9 +1496,22 @@ void mouse_display_loop() {
 				break;
 
 			case MODE_SCROLL_Y:
+				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
+					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
+					scrt =  scroll_function(touch_mode, axis_delta,  scrt, lcd_bg_color); // スクロール処理
+				} else {
+					touch_mode = MODE_TOUCHING;
+				}
+				axis_old = axis_cur;
+				b_scroll_after = true;
+				break;
 			case MODE_SCROLL_X:
-				axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-				scrt =  scroll_function(touch_mode, axis_delta,  scrt, lcd_bg_color); // スクロール処理
+				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
+					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
+					scrt =  scroll_function(touch_mode, axis_delta,  scrt, lcd_bg_color); // スクロール処理
+				} else {
+					touch_mode = MODE_TOUCHING;
+				}
 				axis_old = axis_cur;
 				b_scroll_after = true;
 				break;
