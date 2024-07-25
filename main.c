@@ -1497,23 +1497,15 @@ void mouse_display_loop() {
 				break;
 
 			case MODE_SCROLL_Y:
-				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_Y_DIR], g_sg_data[SG_SCROLL_Y_LEN])) {
-					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
-				} else {
-					touch_mode = MODE_TOUCHING;
-				}
+				axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
+				scrt =  scroll_function(true, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 				axis_old = axis_cur;
 				b_scroll_after = true;
 				break;
 
 			case MODE_SCROLL_X:
-				if(isRangePress(axis_cur, g_sg_data[SG_SCROLL_X_DIR], g_sg_data[SG_SCROLL_X_LEN])) {
-					axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
-					scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
-				} else {
-					touch_mode = MODE_TOUCHING;
-				}
+				axis_delta = get_axis_delta(axis_cur, axis_old, 0.5);
+				scrt =  scroll_function(false, axis_delta,  scrt, lcd_bg_color); // スクロール処理
 				axis_old = axis_cur;
 				b_scroll_after = true;
 				break;
