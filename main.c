@@ -1255,9 +1255,17 @@ void click_commit_timer(int msec) {
 /** ジャイロ操作 **/
 axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
 	// ジャイロ操作取得
-	QMI8658_read_xyz(acc, gyro, &tim_count);		
-	int8_t gyroY = (int8_t)get_acc0();
-	int8_t gyroX = (int8_t)get_acc1();
+	int8_t gyroY = 0;
+	int8_t gyroX = 0;
+
+	// ノイズもあるので3回計測して平均を取る	
+	for(int i=0; i<3; i++) {
+		QMI8658_read_xyz(acc, gyro, &tim_count);		
+		gyroY += (int8_t)get_acc0();
+		gyroX += (int8_t)get_acc1();
+	}
+	gyroY = gyroY / 3;
+	gyroX = gyroX / 3;
 
 	if(g_sg_data[SG_GYRO] > 0) {
 		// ジャイロでポインタ操作
