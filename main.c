@@ -38,6 +38,9 @@ static __attribute__((section (".noinit")))char losabuf[4096];
 #include "img/font34.h"
 #include "CST816S.h"           // LCDタッチ液晶ライブラリ
 
+static int8_t int8_pack(int16_t a, int16_t b);
+static void int8_unpack(int8_t packed, int16_t* a, int16_t* b);
+
 typedef struct {
   char mode[8];
   datetime_t dt;
@@ -156,6 +159,7 @@ typedef enum {
 	SG_TAP_DRAG,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
+	SG_GYRO_RESET,
 	SG_VIBRATION,
 	SG_GAME,
 	SG_EXIT,
@@ -261,7 +265,7 @@ uint8_t g_sg_data[SG_NUM];	// 設定データ保存用
 
 float acc[3], gyro[3];		// ジャイロセンサ
 unsigned int tim_count = 0;	// ジャイロセンサ
-
+axis_t gyro_offset; 		// ジャイロのオフセット
 
 /** フラッシュデータの初期化 **/
 void init_sg(void) {
@@ -283,6 +287,7 @@ void init_sg(void) {
 	g_sg_data[SG_TAP_DRAG]		= 1;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
+	g_sg_data[SG_GYRO_RESET]	= 0;
 	g_sg_data[SG_VIBRATION]		= 1;
 	g_sg_data[SG_GAME]		= 0;
 	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
@@ -361,6 +366,11 @@ void load_sg_from_flash(void) {
 		g_sg_data[i] = flash_target_contents[i];
 		printf("SG %2d = %d\r\n", i, g_sg_data[i]);
 	}
+
+	// ジャイロのオフセット値を取得	
+	int8_unpack(g_sg_data[SG_GYRO_RESET], &gyro_offset.x, &gyro_offset.y);
+
+	printf("gyro_offset.x:%d gyro_offset.y:%d\n", gyro_offset.x, gyro_offset.y);
 }
 
 /** フラッシュデータチェック **/
@@ -864,6 +874,7 @@ char *get_sg_itemname(int sg_no) {
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
+		case SG_GYRO_RESET:	snprintf(tmps, sz, "%02d:GYRO RESET", sg_no); break;
 		case SG_VIBRATION:	snprintf(tmps, sz, "%02d:VIBRATION", sg_no); break;
 		case SG_GAME:		snprintf(tmps, sz, "%02d:GAMEMODE", sg_no); break;
 		case SG_EXIT:		snprintf(tmps, sz, "      EXIT"); break;
@@ -944,16 +955,23 @@ void lcd_sg_draw(int sg_no) {
 	int py=8;
 	lcd_button_frame_set(SG_FRAME_DOWN, BLACK, 5, GRAY,  30);
 	lcd_button_frame_set(SG_FRAME_UP  , BLACK, 5, GRAY,  30);
-	
-	if(sg_no != SG_EXIT) {
-		lcd_str(SG_FRAME_DOWN[0] + px +  5, SG_FRAME_DOWN[1] + py, "DOWN",   &Font20, BLACK, WHITE);
-		lcd_str(SG_FRAME_UP[0]   + px + 15, SG_FRAME_UP[1]   + py, "UP",     &Font20, BLACK, WHITE);
-	} else {
-		lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "CANCEL", &Font16, BLACK, WHITE);
-		lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "SAVE",   &Font24, BLUE,   WHITE);
 
-		lcd_button_frame_set(SG_FRAME_RESET, BLACK, 5, GRAY,  30);
-		lcd_str(SG_FRAME_RESET[0]+ px +  0, SG_FRAME_RESET[1]+ py, "ALL RESET", &Font20, RED,   WHITE);
+	switch(sg_no) {
+		case SG_EXIT:
+			lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "CANCEL", &Font16, BLACK, WHITE);
+			lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "SAVE",   &Font24, BLUE,   WHITE);
+
+			lcd_button_frame_set(SG_FRAME_RESET, BLACK, 5, GRAY,  30);
+			lcd_str(SG_FRAME_RESET[0]+ px +  0, SG_FRAME_RESET[1]+ py, "ALL RESET", &Font20, RED,   WHITE);
+			break;
+		case SG_GYRO_RESET:
+			lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "",   &Font20, BLACK, WHITE);
+			lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "RESET",     &Font20, BLACK, WHITE);
+			break;
+		default:
+			lcd_str(SG_FRAME_DOWN[0] + px +  5, SG_FRAME_DOWN[1] + py, "DOWN",   &Font20, BLACK, WHITE);
+			lcd_str(SG_FRAME_UP[0]   + px + 15, SG_FRAME_UP[1]   + py, "UP",     &Font20, BLACK, WHITE);
+			break;
 	}
 	
 	lcd_button_frame_set(SG_FRAME_PREV, BLACK, 5, GRAY, 30);
@@ -962,6 +980,130 @@ void lcd_sg_draw(int sg_no) {
 		lcd_str(SG_FRAME_PREV[0] + px +  5, SG_FRAME_PREV[1] + py, "PREV",   &Font20, BLACK, WHITE);
 		lcd_str(SG_FRAME_NEXT[0] + px +  5, SG_FRAME_NEXT[1] + py, "NEXT",   &Font20, BLACK, WHITE);
 	}
+}
+
+/** スクリーンセーバー解除 **/
+void screenSaverOff() {
+	screensaver=g_sg_data[SG_SLEEP] * 50;
+	if(plosa->is_sleeping){
+	      lcd_set_brightness(plosa->BRIGHTNESS);
+	      lcd_sleepoff();
+	}
+	plosa->is_sleeping=false;
+}
+
+axis_t get_gyro_axis() {
+	// ジャイロ操作取得
+	int8_t gyroY = 0;
+	int8_t gyroX = 0;
+
+	// ノイズもあるので3回計測して平均を取る	
+	for(int i=0; i<3; i++) {
+		QMI8658_read_xyz(acc, gyro, &tim_count);		
+		gyroY += (int8_t)get_acc0();
+		gyroX += (int8_t)get_acc1();
+	}
+	gyroY = (gyroY / 3);
+	gyroX = (gyroX / 3);
+
+	axis_t axis_gyro;
+	axis_gyro.x = gyroX;
+	axis_gyro.y = gyroY;
+	return axis_gyro;
+}
+
+/** ジャイロ操作 **/
+axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
+	// ジャイロ操作取得
+	axis_t axis_gyro = get_gyro_axis();
+
+	axis_gyro.x = axis_gyro.x - gyro_offset.x;
+	axis_gyro.y = axis_gyro.y - gyro_offset.y;
+
+	if(g_sg_data[SG_GYRO] > 0) {
+		// ジャイロでポインタ操作
+		if(abs(axis_gyro.x) > 2 || abs(axis_gyro.y) > 2) {
+			i2c_data_set(LCDPADKEY_NOCHANGE, axis_gyro.x*g_sg_data[SG_GYRO]/5, -axis_gyro.y*g_sg_data[SG_GYRO]/5, 0, 0);
+		}
+	} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
+		// ジャイロでスクロール
+		if(abs(axis_gyro.x) > 2 || abs(axis_gyro.y) > 2) {
+			printf("gyro scroll\n");
+			i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, axis_gyro.x*g_sg_data[SG_GYRO_SCROLL]/5, axis_gyro.y*g_sg_data[SG_GYRO_SCROLL]/5);
+		}
+	}
+
+	// ジャイロ状態表示
+	if(abs(abs(axis_gyro_old.x) - abs(axis_gyro.x)) > 0 || abs(abs(axis_gyro_old.y) - abs(axis_gyro.y)) > 0 ) {
+		screenSaverOff();
+		// ジャイロの値を表示
+		lcd_text_set(2, lcd_bg_color, false, "GX=%d GY=%d", axis_gyro.x, axis_gyro.y);
+		
+		// 古い方を消す	
+		lcd_circle_guard  (SCREEN_WIDTH / 2 + axis_gyro_old.x * 2, SCREEN_HEIGHT / 2 - axis_gyro_old.y * 2, 4, lcd_bg_color, 1, true);
+		
+		// 中心点	
+		lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 6, WHITE, 1, false);
+
+		if(axis_gyro.x == 0 && axis_gyro.y == 0) {
+			// 中央の場合
+			if(g_sg_data[SG_GAME] == 1) {
+				trigger_vibration(100);
+				center_point_flash(10);
+			}
+		} else {
+			// 今のジャイロ値の場所を描画
+			lcd_circle_guard  (SCREEN_WIDTH / 2 + axis_gyro.x * 2, SCREEN_HEIGHT / 2 - axis_gyro.y * 2, 4, RED, 1, true);
+		}
+		axis_gyro_old = axis_gyro;
+	}
+	return axis_gyro_old;
+}
+
+static const int PACK_BITS_PER_VALUE = 4;
+static const int PACK_MASK = (1 << PACK_BITS_PER_VALUE) - 1;
+static const int8_t PACK_MIN_VALUE = -8;
+static const int8_t PACK_MAX_VALUE = 7;
+
+static int8_t clip(int16_t value) {
+	if (value < PACK_MIN_VALUE) return PACK_MIN_VALUE;
+	if (value > PACK_MAX_VALUE) return PACK_MAX_VALUE;
+	return value;
+}
+
+static int8_t int8_pack(int16_t a, int16_t b) {
+	// 値をクリッピング
+	int8_t clipped_a = clip(a);
+	int8_t clipped_b = clip(b);
+	
+	// クリッピングされた値を0-30の範囲にシフト
+	uint8_t shifted_a = clipped_a - PACK_MIN_VALUE;
+	uint8_t shifted_b = clipped_b - PACK_MIN_VALUE;
+	
+	return (shifted_a & PACK_MASK) | ((shifted_b & PACK_MASK) << PACK_BITS_PER_VALUE);
+}
+
+static void int8_unpack(int8_t packed, int16_t* a, int16_t* b) {
+	uint8_t shifted_a = packed & PACK_MASK;
+	uint8_t shifted_b = (packed >> PACK_BITS_PER_VALUE) & PACK_MASK;
+	
+	// 0-30の範囲から-15から15の範囲に戻す
+	*a = shifted_a + PACK_MIN_VALUE;
+	*b = shifted_b + PACK_MIN_VALUE;
+}
+
+/** ジャイロリセット **/
+static void gyro_reset(void) {
+	axis_t axis_gyro = get_gyro_axis();
+	gyro_offset.x = get_int8_t(axis_gyro.x);
+	gyro_offset.y = get_int8_t(axis_gyro.y);
+	g_sg_data[SG_GYRO_RESET] = int8_pack(gyro_offset.x, gyro_offset.y);
+
+	printf("sg:%d, gyroX_offset:%d gyroY_offset:%d\n", g_sg_data[SG_GYRO_RESET], gyro_offset.x, gyro_offset.y);
+
+	axis_t hoge;
+	int8_unpack(g_sg_data[SG_GYRO_RESET], &hoge.x, &hoge.y);
+	printf("hogeX:%d hogeY:%d\n", hoge.x, hoge.y);
 }
 
 /** 設定画面の操作入力 **/
@@ -1005,30 +1147,43 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_SCROLL_X_REV:
 			max=1;
 			break;
+		case SG_GYRO_RESET:
+			max=127;
+			break;
 	}
 
 	if(is_frame_touch(SG_FRAME_DOWN, axis_cur)) {
-		if(*sg_no != SG_EXIT) {
-			printf("SG_FRAME_DOWN\n");
-			if(g_sg_data[*sg_no] > 0) {
-				g_sg_data[*sg_no] --;
-			}
-		} else {
-			// CANCLE
-			load_sg_from_flash();	// フラッシュから設定読み取り
-			*sg_no = SG_NUM;
+		switch(*sg_no) {
+			case SG_EXIT:
+				// CANCLE
+				load_sg_from_flash();	// フラッシュから設定読み取り
+				*sg_no = SG_NUM;
+				break;
+			case SG_GYRO_RESET:
+				break;
+			default:
+				printf("SG_FRAME_DOWN\n");
+				if(g_sg_data[*sg_no] > 0) {
+					g_sg_data[*sg_no] --;
+				}
+				break;
 		}
 		return true;
 	} else if(is_frame_touch(SG_FRAME_UP, axis_cur)) {
-		if(*sg_no != SG_EXIT) {
-			printf("SG_FRAME_UP\n");
-			if(g_sg_data[*sg_no] < max) {
-				g_sg_data[*sg_no] ++;
-			}
-		} else {
-			// SAVE
-			save_sg_to_flash();	// 設定保存
-			*sg_no = SG_NUM;
+		switch(*sg_no) {
+			case SG_EXIT:
+				save_sg_to_flash();	// 設定保存
+				*sg_no = SG_NUM;
+				break;
+			case SG_GYRO_RESET:
+				gyro_reset();		// GYROリセット
+				break;
+			default:
+				printf("SG_FRAME_UP\n");
+				if(g_sg_data[*sg_no] < max) {
+					g_sg_data[*sg_no] ++;
+				}
+				break;
 		}
 		return true;
 	} else if(is_frame_touch(SG_FRAME_NEXT, axis_cur)) {
@@ -1058,16 +1213,6 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		return true;
 	}
 	return false; // 操作なし
-}
-
-/** スクリーンセーバー解除 **/
-void screenSaverOff() {
-	screensaver=g_sg_data[SG_SLEEP] * 50;
-	if(plosa->is_sleeping){
-	      lcd_set_brightness(plosa->BRIGHTNESS);
-	      lcd_sleepoff();
-	}
-	plosa->is_sleeping=false;
 }
 
 /** 起動画面 **/
@@ -1250,64 +1395,6 @@ void click_commit_timer(int msec) {
 	int *itmp;
 	g_flag_click = true;
 	set_timer(msec, click_commit, itmp);
-}
-
-/** ジャイロ操作 **/
-axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
-	// ジャイロ操作取得
-	int8_t gyroY = 0;
-	int8_t gyroX = 0;
-
-	// ノイズもあるので3回計測して平均を取る	
-	for(int i=0; i<3; i++) {
-		QMI8658_read_xyz(acc, gyro, &tim_count);		
-		gyroY += (int8_t)get_acc0();
-		gyroX += (int8_t)get_acc1();
-	}
-	gyroY = gyroY / 3;
-	gyroX = gyroX / 3;
-
-	if(g_sg_data[SG_GYRO] > 0) {
-		// ジャイロでポインタ操作
-		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-			i2c_data_set(LCDPADKEY_NOCHANGE, gyroX*g_sg_data[SG_GYRO]/5, -gyroY*g_sg_data[SG_GYRO]/5, 0, 0);
-		}
-	} else if(g_sg_data[SG_GYRO_SCROLL] > 0) {
-		// ジャイロでスクロール
-		if(abs(gyroX) > 2 || abs(gyroY) > 2) {
-			printf("gyro scroll\n");
-			i2c_data_set(LCDPADKEY_NOCHANGE, 0, 0, gyroX*g_sg_data[SG_GYRO_SCROLL]/5, gyroY*g_sg_data[SG_GYRO_SCROLL]/5);
-		}
-	}
-
-	// ジャイロ状態表示
-	if(abs(abs(axis_gyro_old.x) - abs(gyroX)) > 0 || abs(abs(axis_gyro_old.y) - abs(gyroY)) > 0 ) {
-		screenSaverOff();
-		// ジャイロの値を表示
-		lcd_text_set(2, lcd_bg_color, false, "GX=%d GY=%d", gyroX, gyroY);
-		
-		// 古い方を消す	
-		lcd_circle_guard  (SCREEN_WIDTH / 2 + axis_gyro_old.x * 2, SCREEN_HEIGHT / 2 - axis_gyro_old.y * 2, 4, lcd_bg_color, 1, true);
-		
-		// 中心点	
-		lcd_circle_guard(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 6, WHITE, 1, false);
-
-		if(gyroX == 0 && gyroY ==0) {
-			// 中央の場合
-			if(g_sg_data[SG_GAME] == 1) {
-				trigger_vibration(100);
-				center_point_flash(10);
-			}
-		} else {
-			// 今のジャイロ値の場所を描画
-			lcd_circle_guard  (SCREEN_WIDTH / 2 + gyroX * 2, SCREEN_HEIGHT / 2 - gyroY * 2, 4, RED, 1, true);
-		}
-		
-		axis_gyro_old.x = gyroX;
-		axis_gyro_old.y = gyroY;
-	}
-
-	return axis_gyro_old;
 }
 
 /** 設定画面呼び出し判定 **/
