@@ -159,7 +159,8 @@ typedef enum {
 	SG_TAP_DRAG,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
-	SG_GYRO_RESET,
+	SG_GYRO_X_OFFSET,
+	SG_GYRO_Y_OFFSET,
 	SG_VIBRATION,
 	SG_GAME,
 	SG_EXIT,
@@ -265,7 +266,6 @@ uint8_t g_sg_data[SG_NUM];	// 設定データ保存用
 
 float acc[3], gyro[3];		// ジャイロセンサ
 unsigned int tim_count = 0;	// ジャイロセンサ
-axis_t gyro_offset; 		// ジャイロのオフセット
 
 /** フラッシュデータの初期化 **/
 void init_sg(void) {
@@ -287,7 +287,8 @@ void init_sg(void) {
 	g_sg_data[SG_TAP_DRAG]		= 1;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
-	g_sg_data[SG_GYRO_RESET]	= 0;
+	g_sg_data[SG_GYRO_X_OFFSET]	= 0;
+	g_sg_data[SG_GYRO_Y_OFFSET]	= 0;
 	g_sg_data[SG_VIBRATION]		= 1;
 	g_sg_data[SG_GAME]		= 0;
 	g_sg_data[SG_EXIT]		= CHECK_NUMBER_SG;
@@ -366,11 +367,6 @@ void load_sg_from_flash(void) {
 		g_sg_data[i] = flash_target_contents[i];
 		printf("SG %2d = %d\r\n", i, g_sg_data[i]);
 	}
-
-	// ジャイロのオフセット値を取得	
-	int8_unpack(g_sg_data[SG_GYRO_RESET], &gyro_offset.x, &gyro_offset.y);
-
-	printf("gyro_offset.x:%d gyro_offset.y:%d\n", gyro_offset.x, gyro_offset.y);
 }
 
 /** フラッシュデータチェック **/
@@ -874,7 +870,8 @@ char *get_sg_itemname(int sg_no) {
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
-		case SG_GYRO_RESET:	snprintf(tmps, sz, "%02d:GYRO RESET", sg_no); break;
+		case SG_GYRO_X_OFFSET:	snprintf(tmps, sz, "%02d:GYRO RESET", sg_no); break;
+		case SG_GYRO_Y_OFFSET:	snprintf(tmps, sz, "%02d:GYRO RESET", sg_no); break;
 		case SG_VIBRATION:	snprintf(tmps, sz, "%02d:VIBRATION", sg_no); break;
 		case SG_GAME:		snprintf(tmps, sz, "%02d:GAMEMODE", sg_no); break;
 		case SG_EXIT:		snprintf(tmps, sz, "      EXIT"); break;
@@ -908,8 +905,8 @@ void lcd_sg_draw(int sg_no) {
 	
 	printf("lcd_sg_draw 03\r\n");
 
-	char tmps[32];
-	sprintf(tmps, "Value ");
+	char i_value[32];
+	sprintf(i_value, "Value ");
 
 	switch(sg_no) {
 		case SG_SLEEP:
@@ -921,9 +918,9 @@ void lcd_sg_draw(int sg_no) {
 		case SG_VIBRATION:
 		case SG_GAME:
 			if(g_sg_data[sg_no] == 0) {
-				strcat(tmps, "OFF");
+				strcat(i_value, "OFF");
 			} else {
-				sprintf(tmps, "%s%d", tmps, g_sg_data[sg_no]);
+				sprintf(i_value, "%s%d", i_value, g_sg_data[sg_no]);
 			}
 			break;
 		case SG_DRUG_DIR:
@@ -932,14 +929,18 @@ void lcd_sg_draw(int sg_no) {
 		case SG_SCROLL_X_DIR:
 			// 方向系の設定は文字に変換
 			switch(g_sg_data[sg_no]) {
-				case DIR_TOP:		strcat(tmps, "TOP"); break;
-				case DIR_BOTTOM:	strcat(tmps, "BOTTOM"); break;
-				case DIR_LEFT:		strcat(tmps, "LEFT"); break;
-				case DIR_RIGHT:		strcat(tmps, "RIGHT"); break;
+				case DIR_TOP:		strcat(i_value, "TOP"); break;
+				case DIR_BOTTOM:	strcat(i_value, "BOTTOM"); break;
+				case DIR_LEFT:		strcat(i_value, "LEFT"); break;
+				case DIR_RIGHT:		strcat(i_value, "RIGHT"); break;
 			}
 			break;
+		case SG_GYRO_X_OFFSET:
+		case SG_GYRO_Y_OFFSET:
+			sprintf(i_value, "%s %d %d", i_value, (int8_t)g_sg_data[SG_GYRO_X_OFFSET], (int8_t)g_sg_data[SG_GYRO_Y_OFFSET]);
+			break;
 		default:
-			sprintf(tmps, "%s%d", tmps, g_sg_data[sg_no]);
+			sprintf(i_value, "%s%d", i_value, g_sg_data[sg_no]);
 			break;
 	}
 	
@@ -947,7 +948,7 @@ void lcd_sg_draw(int sg_no) {
 		// 設定値の枠
 		lcd_frame_set(SG_FRAME_VALUE, RED, 1);
 		// 設定値
-		lcd_str(SG_VALUE_X, SG_VALUE_Y, tmps, &Font20, WHITE, BLACK);
+		lcd_str(SG_VALUE_X, SG_VALUE_Y, i_value, &Font20, WHITE, BLACK);
 	}
 	
 	// 設定ボタンの表示
@@ -964,7 +965,8 @@ void lcd_sg_draw(int sg_no) {
 			lcd_button_frame_set(SG_FRAME_RESET, BLACK, 5, GRAY,  30);
 			lcd_str(SG_FRAME_RESET[0]+ px +  0, SG_FRAME_RESET[1]+ py, "ALL RESET", &Font20, RED,   WHITE);
 			break;
-		case SG_GYRO_RESET:
+		case SG_GYRO_X_OFFSET:
+		case SG_GYRO_Y_OFFSET:
 			lcd_str(SG_FRAME_DOWN[0] + px +  0, SG_FRAME_DOWN[1] + py, "",   &Font20, BLACK, WHITE);
 			lcd_str(SG_FRAME_UP[0]   + px +  0, SG_FRAME_UP[1]   + py, "RESET",     &Font20, BLACK, WHITE);
 			break;
@@ -1017,8 +1019,8 @@ axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
 	// ジャイロ操作取得
 	axis_t axis_gyro = get_gyro_axis();
 
-	axis_gyro.x = axis_gyro.x - gyro_offset.x;
-	axis_gyro.y = axis_gyro.y - gyro_offset.y;
+	axis_gyro.x = axis_gyro.x - (int8_t)g_sg_data[SG_GYRO_X_OFFSET];
+	axis_gyro.y = axis_gyro.y - (int8_t)g_sg_data[SG_GYRO_Y_OFFSET];
 
 	if(g_sg_data[SG_GYRO] > 0) {
 		// ジャイロでポインタ操作
@@ -1060,50 +1062,37 @@ axis_t gyro_function(axis_t axis_gyro_old, uint16_t lcd_bg_color) {
 	return axis_gyro_old;
 }
 
-static const int PACK_BITS_PER_VALUE = 4;
-static const int PACK_MASK = (1 << PACK_BITS_PER_VALUE) - 1;
-static const int8_t PACK_MIN_VALUE = -8;
-static const int8_t PACK_MAX_VALUE = 7;
+/** 起動画面 **/
+void start_display() {
+	printf("start display start \r\n");
+			
+	lcd_clr(BLACK);
+	lcd_title_set();
 
-static int8_t clip(int16_t value) {
-	if (value < PACK_MIN_VALUE) return PACK_MIN_VALUE;
-	if (value > PACK_MAX_VALUE) return PACK_MAX_VALUE;
-	return value;
-}
+	int speed = g_sg_data[SG_TITLE_SPEED];
 
-static int8_t int8_pack(int16_t a, int16_t b) {
-	// 値をクリッピング
-	int8_t clipped_a = clip(a);
-	int8_t clipped_b = clip(b);
-	
-	// クリッピングされた値を0-30の範囲にシフト
-	uint8_t shifted_a = clipped_a - PACK_MIN_VALUE;
-	uint8_t shifted_b = clipped_b - PACK_MIN_VALUE;
-	
-	return (shifted_a & PACK_MASK) | ((shifted_b & PACK_MASK) << PACK_BITS_PER_VALUE);
-}
+	if(1 <= speed && speed <= 8) {
+		for(int idx=0; idx < 120/speed; idx++) {
+			int len = idx * speed;
+			lcd_range_line_draw(COLOR_DRAG,     DIR_TOP,    len);
+			lcd_range_line_draw(COLOR_R_CLICK,  DIR_BOTTOM, len);
+			lcd_range_line_draw(COLOR_SCROLL_X, DIR_LEFT,   len);
+			lcd_range_line_draw(COLOR_SCROLL_Y, DIR_RIGHT,  len);
 
-static void int8_unpack(int8_t packed, int16_t* a, int16_t* b) {
-	uint8_t shifted_a = packed & PACK_MASK;
-	uint8_t shifted_b = (packed >> PACK_BITS_PER_VALUE) & PACK_MASK;
-	
-	// 0-30の範囲から-15から15の範囲に戻す
-	*a = shifted_a + PACK_MIN_VALUE;
-	*b = shifted_b + PACK_MIN_VALUE;
+			lcd_display(b0);
+		}
+	}
+	lcd_clr(BLACK);		// 画面クリア
+	lcd_display(b0);
+	printf("start display end \r\n");
 }
 
 /** ジャイロリセット **/
 static void gyro_reset(void) {
 	axis_t axis_gyro = get_gyro_axis();
-	gyro_offset.x = get_int8_t(axis_gyro.x);
-	gyro_offset.y = get_int8_t(axis_gyro.y);
-	g_sg_data[SG_GYRO_RESET] = int8_pack(gyro_offset.x, gyro_offset.y);
-
-	printf("sg:%d, gyroX_offset:%d gyroY_offset:%d\n", g_sg_data[SG_GYRO_RESET], gyro_offset.x, gyro_offset.y);
-
-	axis_t hoge;
-	int8_unpack(g_sg_data[SG_GYRO_RESET], &hoge.x, &hoge.y);
-	printf("hogeX:%d hogeY:%d\n", hoge.x, hoge.y);
+	g_sg_data[SG_GYRO_X_OFFSET] = get_int8_t(axis_gyro.x);
+	g_sg_data[SG_GYRO_Y_OFFSET] = get_int8_t(axis_gyro.y);
+	printf("gyroX_offset:%d gyroY_offset:%d\n", (int8_t)g_sg_data[SG_GYRO_X_OFFSET], (int8_t)g_sg_data[SG_GYRO_Y_OFFSET]);
 }
 
 /** 設定画面の操作入力 **/
@@ -1147,9 +1136,6 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_SCROLL_X_REV:
 			max=1;
 			break;
-		case SG_GYRO_RESET:
-			max=127;
-			break;
 	}
 
 	if(is_frame_touch(SG_FRAME_DOWN, axis_cur)) {
@@ -1159,7 +1145,8 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 				load_sg_from_flash();	// フラッシュから設定読み取り
 				*sg_no = SG_NUM;
 				break;
-			case SG_GYRO_RESET:
+			case SG_GYRO_X_OFFSET:
+			case SG_GYRO_Y_OFFSET:
 				break;
 			default:
 				printf("SG_FRAME_DOWN\n");
@@ -1175,7 +1162,8 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 				save_sg_to_flash();	// 設定保存
 				*sg_no = SG_NUM;
 				break;
-			case SG_GYRO_RESET:
+			case SG_GYRO_X_OFFSET:
+			case SG_GYRO_Y_OFFSET:
 				gyro_reset();		// GYROリセット
 				break;
 			default:
@@ -1190,6 +1178,9 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		printf("SG_FRAME_NEXT\n");
 		if(*sg_no < SG_NUM - 1) {
 			*sg_no = *sg_no + 1;	// 次の項目へ
+			if(*sg_no == SG_GYRO_Y_OFFSET) {
+				*sg_no = *sg_no + 1;	// 次の項目へ
+			}
 		} else {
 			*sg_no = 0;		// 最後から最初に戻る
 		}
@@ -1199,6 +1190,9 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		printf("SG_FRAME_PREV\n");
 		if(*sg_no > 0) {
 			*sg_no = *sg_no - 1;	// 前の項目へ
+			if(*sg_no == SG_GYRO_Y_OFFSET) {
+				*sg_no = *sg_no - 1;	// 前の項目へ
+			}
 		} else {
 			*sg_no = SG_NUM - 1;	// 最初から最後に行く
 		}
@@ -1213,31 +1207,6 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		return true;
 	}
 	return false; // 操作なし
-}
-
-/** 起動画面 **/
-void start_display() {
-	printf("start display start \r\n");
-			
-	lcd_clr(BLACK);
-	lcd_title_set();
-
-	int speed = g_sg_data[SG_TITLE_SPEED];
-
-	if(1 <= speed && speed <= 8) {
-		for(int idx=0; idx < 120/speed; idx++) {
-			int len = idx * speed;
-			lcd_range_line_draw(COLOR_DRAG,     DIR_TOP,    len);
-			lcd_range_line_draw(COLOR_R_CLICK,  DIR_BOTTOM, len);
-			lcd_range_line_draw(COLOR_SCROLL_X, DIR_LEFT,   len);
-			lcd_range_line_draw(COLOR_SCROLL_Y, DIR_RIGHT,  len);
-
-			lcd_display(b0);
-		}
-	}
-	lcd_clr(BLACK);		// 画面クリア
-	lcd_display(b0);
-	printf("start display end \r\n");
 }
 
 /** 設定画面処理ループ **/
@@ -1258,6 +1227,10 @@ void sg_display_loop() {
 	while(true) {
 		// 軌跡を表示
 		lcd_circle_guard(axis_cur.x, axis_cur.y, 3, GREEN, 1, false);
+		
+		if(!gpio_get(SETTING_PIN)) {
+			break;		// settingボタンを押したら終わる
+		}
 
 		// タッチが行われた場合
 		if(flag_touch){
