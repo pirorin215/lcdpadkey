@@ -996,14 +996,14 @@ void screenSaverOff() {
 
 axis_t get_gyro_axis() {
 	// ジャイロ操作取得
-	int8_t gyroY = 0;
-	int8_t gyroX = 0;
+	int16_t gyroY = 0;
+	int16_t gyroX = 0;
 
 	// ノイズもあるので3回計測して平均を取る	
 	for(int i=0; i<3; i++) {
 		QMI8658_read_xyz(acc, gyro, &tim_count);		
-		gyroY += (int8_t)get_acc0();
-		gyroX += (int8_t)get_acc1();
+		gyroY += get_acc0();
+		gyroX += get_acc1();
 	}
 	gyroY = (gyroY / 3);
 	gyroX = (gyroX / 3);
@@ -1116,9 +1116,9 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 			max=115;
 			break;
 		case SG_TITLE_SPEED:
+		case SG_GYRO:
 			max=8;
 			break;
-		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 		case SG_VIBRATION:
 			max=3;
