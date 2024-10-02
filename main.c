@@ -156,6 +156,7 @@ typedef enum {
 	SG_SCROLL_X_LEN,
 	SG_SCROLL_X_REV,
 	SG_TITLE_SPEED,
+	SG_CLICK,
 	SG_TAP_DRAG,
 	SG_GYRO,
 	SG_GYRO_SCROLL,
@@ -284,7 +285,8 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_SCROLL_X_REV]	= 0;
-	g_sg_data[SG_TAP_DRAG]		= 1;
+	g_sg_data[SG_CLICK]		= 1;
+	g_sg_data[SG_TAP_DRAG]		= 0;
 	g_sg_data[SG_GYRO]		= 0;
 	g_sg_data[SG_GYRO_SCROLL]	= 0;
 	g_sg_data[SG_GYRO_X_OFFSET]	= 0;
@@ -867,6 +869,7 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
+		case SG_CLICK:		snprintf(tmps, sz, "%02d:CLICK", sg_no); break;
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
 		case SG_GYRO:		snprintf(tmps, sz, "%02d:GYRO SPEED", sg_no); break;
 		case SG_GYRO_SCROLL:	snprintf(tmps, sz, "%02d:GYRO SCROLL", sg_no); break;
@@ -912,11 +915,13 @@ void lcd_sg_draw(int sg_no) {
 		case SG_SLEEP:
 		case SG_ACC_LIMIT:
 		case SG_TITLE_SPEED:
+		case SG_CLICK:
 		case SG_TAP_DRAG:
 		case SG_GYRO:
 		case SG_GYRO_SCROLL:
 		case SG_VIBRATION:
 		case SG_GAME:
+			printf("lcd_sg_draw switch sg_n\n");
 			if(g_sg_data[sg_no] == 0) {
 				strcat(i_value, "OFF");
 			} else {
@@ -1130,6 +1135,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_ACC_SPEED:
 			max=10;
 			break;
+		case SG_CLICK:
 		case SG_TAP_DRAG:
 		case SG_GAME:
 		case SG_SCROLL_Y_REV:
@@ -1352,6 +1358,11 @@ volatile bool g_flag_click = false; // クリック確定の送信判定フラ�
 
 /** クリック確定の送信処理 **/
 int64_t click_commit(alarm_id_t id, void *user_data) {
+
+	if(!g_sg_data[SG_CLICK]) {
+		return 0;
+	}
+
 	if(g_flag_click) {
 		i2c_data_set(LCDPADKEY_NONE_CLICK, 0, 0, 0, 0);
 		g_flag_click = false;
@@ -1401,6 +1412,12 @@ sg_trigger_t sg_trigger_function(sg_trigger_t sg_trigger, axis_t axis_cur, uint1
 		sg_trigger.time = time_us_32();
 	}
 	return sg_trigger;
+}
+
+void click_left() {
+	if(g_sg_data[SG_CLICK]) {
+		i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
+	}
 }
 
 /** メイン処理ループ **/
@@ -1526,7 +1543,7 @@ void mouse_display_loop() {
 		if(tap_drag_state >= 1 && (time_us_32() - last_touch_start_time)/MS > DRAG_LIMIT_MSEC) {
 			printf("b_tap_drag_prestage clear\r\n");
 			if(tap_drag_state >= 2) {
-				i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
+				click_left();
 				i2c_data_set(LCDPADKEY_NONE_CLICK, 0, 0, 0, 0);
 			}
 			tap_drag_state = 0;
@@ -1553,7 +1570,7 @@ void mouse_display_loop() {
 
 					if(isNearbyPoint(axis_touch_start, axis_cur, 3)) {
 						lcd_text_set(3, lcd_bg_color, true, "TOUCH RELEASE");
-						i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
+						click_left();
 						click_commit_timer(DRAG_LIMIT_MSEC+40);
 						axis_old   = axis_0;
 						axis_touch_start = axis_0;
@@ -1606,7 +1623,7 @@ void mouse_display_loop() {
 				lcd_bg_color = COLOR_DRAG;
 				trigger_vibration(70);
 
-				i2c_data_set(LCDPADKEY_CLICK_LEFT, 0, 0, 0, 0);
+				click_left();
 				axis_old = axis_cur;
 				touch_mode = MODE_TOUCHING;
 				break;
