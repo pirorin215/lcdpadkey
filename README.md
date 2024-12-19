@@ -39,8 +39,7 @@ cd lcdpadkey
 
 2. pico-sdk PATH
 ```
-export PICO_SDK_PATH=/mnt/c/pico-sdk
-export PICO_TOOLCHAIN_PATH=/Users/[user]/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/13.2.1-1.1.1/.content/bin/
+export PICO_SDK_PATH=~/pico-sdk
 ```
 
 3. cmake
