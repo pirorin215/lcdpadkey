@@ -143,6 +143,7 @@ typedef enum {
 typedef enum {
 	SG_SLEEP,
 	SG_SPEED,
+	SG_MOVE_DIR,
 	SG_ACC_LIMIT,
 	SG_ACC_SPEED,
 	SG_DRUG_DIR,
@@ -155,6 +156,7 @@ typedef enum {
 	SG_SCROLL_X_DIR,
 	SG_SCROLL_X_LEN,
 	SG_SCROLL_X_REV,
+	SG_SCROLL_ACC,
 	SG_TITLE_SPEED,
 	SG_CLICK,
 	SG_TAP_DRAG,
@@ -221,6 +223,8 @@ volatile uint8_t flag_event = 0;
 
 #define FLASH_TARGET_OFFSET 0x1F0000 // W25Q16JVの最終ブロック(Block31)のセクタ0の先頭アドレス
 
+#define SCROLL_ACC_COUNT          13 // スクロールしっぱなしで連続スクロールになるカウント値
+
 const char POS_X[3] = { 40, 40, 40};
 const char POS_Y[3] = { 40, 60, 80};
 
@@ -272,6 +276,7 @@ unsigned int tim_count = 0;	// ジャイロセンサ
 void init_sg(void) {
 	g_sg_data[SG_SLEEP]		= 4;
 	g_sg_data[SG_SPEED]		= 2;
+	g_sg_data[SG_MOVE_DIR]		= DIR_TOP;
 	g_sg_data[SG_ACC_LIMIT]		= 12;
 	g_sg_data[SG_ACC_SPEED]		= 5;
 	g_sg_data[SG_TITLE_SPEED]	= 4;
@@ -285,6 +290,7 @@ void init_sg(void) {
 	g_sg_data[SG_SCROLL_X_DIR]	= DIR_BOTTOM;
 	g_sg_data[SG_SCROLL_X_LEN]	= 55;
 	g_sg_data[SG_SCROLL_X_REV]	= 0;
+	g_sg_data[SG_SCROLL_ACC]	= SCROLL_ACC_COUNT;
 	g_sg_data[SG_CLICK]		= 1;
 	g_sg_data[SG_TAP_DRAG]		= 0;
 	g_sg_data[SG_GYRO]		= 0;
@@ -531,6 +537,32 @@ void i2c_data_set(uint8_t click, int x, int y, int h, int v) {
 	volatile simple_pointer_data_t* i2c_tmp = &i2c_ring_buffer.buffer[i2c_ring_buffer.head];
 
 	i2c_tmp->click = click;
+
+	int tmp_swap;
+	switch(g_sg_data[SG_MOVE_DIR]) {
+		case DIR_BOTTOM:
+			// 上下左右反転
+			x = -1 * x;
+			y = -1 * y;
+			break;
+		case DIR_LEFT:
+			// 上下左右入れ替え
+			tmp_swap = x;
+			x = -1 * y;
+			y =  1 * tmp_swap;
+			break;
+		case DIR_RIGHT:
+			// 上下左右入れ替え
+			tmp_swap = x;
+			x =  1 * y;
+			y = -1 * tmp_swap;
+			break;
+		case DIR_TOP:
+		default:
+			// 何もしない
+			break;
+	}
+
 	i2c_tmp->pointer_x = get_int8_t(x);
 	i2c_tmp->pointer_y = get_int8_t(y);
 	i2c_tmp->wheel_h   = get_int8_t(h);
@@ -856,6 +888,7 @@ char *get_sg_itemname(int sg_no) {
 	switch(sg_no) {
 		case SG_SLEEP:		snprintf(tmps, sz, "%02d:SLEEP", sg_no); break;
 		case SG_SPEED:		snprintf(tmps, sz, "%02d:SPEED", sg_no); break;
+		case SG_MOVE_DIR:	snprintf(tmps, sz, "%02d:MOVE DIR", sg_no); break;
 		case SG_ACC_LIMIT:	snprintf(tmps, sz, "%02d:ACC LIMIT", sg_no); break;
 		case SG_ACC_SPEED:	snprintf(tmps, sz, "%02d:ACC SPEED", sg_no); break;
 		case SG_DRUG_DIR:	snprintf(tmps, sz, "%02d:DRUG DIR", sg_no); break;
@@ -868,6 +901,7 @@ char *get_sg_itemname(int sg_no) {
 		case SG_SCROLL_X_DIR:	snprintf(tmps, sz, "%02d:SCROLL X DIR", sg_no); break;
 		case SG_SCROLL_X_LEN:	snprintf(tmps, sz, "%02d:SCROLL X LEN", sg_no); break;
 		case SG_SCROLL_X_REV:	snprintf(tmps, sz, "%02d:SCROLL X REV", sg_no); break;
+		case SG_SCROLL_ACC:	snprintf(tmps, sz, "%02d:SCROLL ACC", sg_no); break;
 		case SG_TITLE_SPEED:	snprintf(tmps, sz, "%02d:TITLE SPEED", sg_no); break;
 		case SG_CLICK:		snprintf(tmps, sz, "%02d:CLICK", sg_no); break;
 		case SG_TAP_DRAG:	snprintf(tmps, sz, "%02d:TAP DRAG", sg_no); break;
@@ -932,6 +966,7 @@ void lcd_sg_draw(int sg_no) {
 		case SG_R_CLICK_DIR:
 		case SG_SCROLL_Y_DIR:
 		case SG_SCROLL_X_DIR:
+		case SG_MOVE_DIR:
 			// 方向系の設定は文字に変換
 			switch(g_sg_data[sg_no]) {
 				case DIR_TOP:		strcat(i_value, "TOP"); break;
@@ -1112,6 +1147,7 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_R_CLICK_DIR:
 		case SG_SCROLL_Y_DIR:
 		case SG_SCROLL_X_DIR:
+		case SG_MOVE_DIR:
 			max=DIR_NUM-1;
 			break;
 		case SG_DRUG_LEN:
@@ -1134,6 +1170,9 @@ bool sg_operation(int *sg_no, axis_t axis_cur) {
 		case SG_SPEED:
 		case SG_ACC_SPEED:
 			max=10;
+			break;
+		case SG_SCROLL_ACC:
+			max=SCROLL_ACC_COUNT;
 			break;
 		case SG_CLICK:
 		case SG_TAP_DRAG:
@@ -1345,10 +1384,15 @@ scroll_t scroll_function(int touch_mode, axis_t axis_delta, scroll_t scrt, int16
 		scrt.count++;
 	} else {
 		// スクロール状態で押しっぱなしの時
-		if(scrt.count > 12) {
-			int move = scrt.last > 0 ? 1 : -1;
-			scroll_function_inner(touch_mode, move);
-			trigger_vibration(20);
+		if(scrt.count >= SCROLL_ACC_COUNT) {
+			if(scrt.count % (SCROLL_ACC_COUNT - g_sg_data[SG_SCROLL_ACC]) == 0) {
+				int move = scrt.last > 0 ? 1 : -1;
+				scroll_function_inner(touch_mode, move);
+				trigger_vibration(20);
+				scrt.count = SCROLL_ACC_COUNT;
+			} else {
+				scrt.count += 1;
+			}
 		}
 	}
 	return scrt;
